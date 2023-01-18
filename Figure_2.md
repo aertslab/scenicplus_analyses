@@ -904,7 +904,7 @@ fig.savefig(os.path.join(plot_dir, 'tau_1_2_.pdf'))
 
 ```
 
-## Export Region-to-gene links for visualization inR
+## Export Region-to-gene links for visualization in R
 
 ```python
 
