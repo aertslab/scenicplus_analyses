@@ -1,0 +1,444 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# DPCL dotplot
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- AUCell::getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+rownames(cells_AUC) <- gsub('_extended', '', rownames(cells_AUC) )
+```
+
+```{r}
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC_region <- AUCell::getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+rownames(cells_AUC_region) <- gsub('_extended', '', rownames(cells_AUC_region))
+```
+
+```{r}
+cells_AUC <- cells_AUC[rownames(cells_AUC_region), which(colnames(cells_AUC) %in% colnames(cells_AUC_region))]
+cells_AUC_region <- cells_AUC_region[rownames(cells_AUC), colnames(cells_AUC)]
+correlations <- cor(t(cells_AUC), t(cells_AUC_region))
+corre <- diag(correlations)
+corre <- corre[-grep('_-_-', names(corre), fixed=TRUE)]
+corre <- corre[-grep('_+_-', names(corre), fixed=TRUE)]
+l <- names(corre)
+names(corre) <- substr(l,1,nchar(l)-2)
+correlations <- correlations[-grep('_-_-', rownames(correlations), fixed=TRUE), -grep('_-_-', colnames(correlations), fixed=TRUE)]
+correlations <- correlations[-grep('_+_-', rownames(correlations), fixed=TRUE), -grep('_+_-', colnames(correlations), fixed=TRUE)]
+l <- rownames(correlations)
+rownames(correlations) <- substr(l,1,nchar(l)-2)
+l <- colnames(correlations)
+colnames(correlations) <- substr(l,1,nchar(l)-2)
+```
+
+- How many TFs are only positive, only negative or both?
+
+```{r}
+x <- regulon_list[names(corre[which(corre > 0.7)])]
+x <- x[which(lengths(x) > 25)]
+length(unique(sapply(strsplit(names(x), split = "_"), "[", 1)))
+```
+
+```{r}
+#regulon_list_cp <- regulon_list
+#regulon_list <- regulon_list_cp
+regulon_list <- regulon_list[names(corre[which(corre > 0.7)])]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 25)]
+both <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+both <- both[duplicated(both)]
+correlations_both <- diag(correlations[paste0(both, '_-'), paste0(both, '_+')])
+names(correlations_both) <- both
+both <- names(correlations_both)[which(correlations_both < 0)]
+# No out in this case
+if (sum(correlations_both > 0) > 0){
+  out <- paste0(names(correlations_both)[which(correlations_both > 0)], '_-')
+  regulon_list <- regulon_list[-which(names(regulon_list) %in% out)]
+}
+negative <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_-'))]
+negative <- negative[grep('_-', negative)]
+positive <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_+'))]
+positive <- positive[grep('_+', positive, fixed=TRUE)]
+```
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cells_AUC <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+```
+
+```{r}
+library(SCENIC)
+rss_values <- calcRSS(cells_AUC, cell_data$ACC_Cell_type)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values
+rss_values <- rss_values[-grep('_-_-', rownames(rss_values), fixed=TRUE), ]
+rss_values <- rss_values[-grep('_+_-', rownames(rss_values), fixed=TRUE),]
+l <- rownames(rss_values)
+rownames(rss_values) <- substr(l,1,nchar(l)-2)
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$ACC_Cell_type)){
+  print(x)
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$ACC_Cell_type)])/sum(rowSums(dgem[,grep(x, cell_data$ACC_Cell_type)]))*10^6+1)))
+}
+exp_mat <- t(data.table::rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat
+```
+
+```{r}
+sel_rel <- c(positive, negative, paste0(both, '_+'), paste0(both, '_-'))
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.RDS')
+```
+
+```{r}
+write.table(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.tsv', sep='\t', quote=FALSE, col.names=FALSE, row.names=FALSE)
+```
+
+```{r}
+library(ggplot2)
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/Regulon_dotplot_all_RSS_suppl_07.pdf', g, width=18, height=6)
+```
+
+```{r}
+library(ggplot2)
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+rel_data$Expression_scale <- ave(rel_data$Expression, rel_data$Regulon, FUN = scale)
+rel_data$Repressor_activator <- unlist(lapply(grepl("+", rel_data$Regulon, fixed=TRUE), function(x) if (x) 'Activators' else 'Repressors'))
+g <- ggplot(data = rel_data, mapping = aes_string(y = 'Cell_type', x = 'Regulon')) +
+    facet_grid(cols = vars(Repressor_activator), scales = "free_x", space = 'free') +
+    geom_tile(mapping = aes_string(fill = 'Expression_scale')) +
+    geom_point(mapping = aes_string(size = 'RSS'), colour="black",pch=21, fill = 'black') +
+    scale_radius(range = c(0.1, 3), limits=c(0.8, 1)) +
+    scale_fill_distiller(palette = "RdYlBu") +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, size = 5))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/Regulon_dotplot_all_RSS_suppl_07_Seppe_style_small_fonts.pdf', g, width=18, height=6)
+```
+
+```{r}
+library(ggplot2)
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+rel_data$Expression_scale <- ave(rel_data$Expression, rel_data$Regulon, FUN = scale)
+rel_data$Repressor_activator <- unlist(lapply(grepl("+", rel_data$Regulon, fixed=TRUE), function(x) if (x) 'Activators' else 'Repressors'))
+g <- ggplot(data = rel_data, mapping = aes_string(y = 'Cell_type', x = 'Regulon')) +
+    facet_grid(cols = vars(Repressor_activator), scales = "free_x", space = 'free') +
+    geom_tile(mapping = aes_string(fill = 'Expression_scale')) +
+    geom_point(mapping = aes_string(size = 'RSS'), colour="black",pch=21, fill = 'black') +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_distiller(palette = "RdYlBu") +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, size = 5))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/Regulon_dotplot_all_RSS_suppl_07_Seppe_style_small_fonts_nothr.pdf', g, width=18, height=6)
+```
+
+
+# DPCL dotplot - same for SCREEN analysis
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/SCENIC+_gene_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- AUCell::getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+rownames(cells_AUC) <- gsub('_extended', '', rownames(cells_AUC) )
+```
+
+```{r}
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC_region <- AUCell::getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+rownames(cells_AUC_region) <- gsub('_extended', '', rownames(cells_AUC_region))
+```
+
+```{r}
+cells_AUC <- cells_AUC[rownames(cells_AUC_region), which(colnames(cells_AUC) %in% colnames(cells_AUC_region))]
+cells_AUC_region <- cells_AUC_region[rownames(cells_AUC), colnames(cells_AUC)]
+correlations <- cor(t(cells_AUC), t(cells_AUC_region))
+corre <- diag(correlations)
+corre <- corre[-grep('_-_-', names(corre), fixed=TRUE)]
+corre <- corre[-grep('_+_-', names(corre), fixed=TRUE)]
+l <- names(corre)
+names(corre) <- substr(l,1,nchar(l)-2)
+correlations <- correlations[-grep('_-_-', rownames(correlations), fixed=TRUE), -grep('_-_-', colnames(correlations), fixed=TRUE)]
+correlations <- correlations[-grep('_+_-', rownames(correlations), fixed=TRUE), -grep('_+_-', colnames(correlations), fixed=TRUE)]
+l <- rownames(correlations)
+rownames(correlations) <- substr(l,1,nchar(l)-2)
+l <- colnames(correlations)
+colnames(correlations) <- substr(l,1,nchar(l)-2)
+```
+
+- How many TFs are only positive, only negative or both?
+
+```{r}
+x <- regulon_list[names(corre[which(corre > 0.7)])]
+x <- x[which(lengths(x) > 25)]
+length(unique(sapply(strsplit(names(x), split = "_"), "[", 1)))
+```
+
+```{r}
+#regulon_list_cp <- regulon_list
+#regulon_list <- regulon_list_cp
+regulon_list <- regulon_list[names(corre[which(corre > 0.7)])]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 25)]
+both <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+both <- both[duplicated(both)]
+correlations_both <- diag(correlations[paste0(both, '_-'), paste0(both, '_+')])
+names(correlations_both) <- both
+both <- names(correlations_both)[which(correlations_both < 0)]
+# No out in this case
+if (sum(correlations_both > 0) > 0){
+  out <- paste0(names(correlations_both)[which(correlations_both > 0)], '_-')
+  regulon_list <- regulon_list[-which(names(regulon_list) %in% out)]
+}
+negative <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_-'))]
+negative <- negative[grep('_-', negative)]
+positive <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_+'))]
+positive <- positive[grep('_+', positive, fixed=TRUE)]
+```
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/SCENIC+_gene_based.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cells_AUC <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+```
+
+```{r}
+library(SCENIC)
+rss_values <- calcRSS(cells_AUC, cell_data$ACC_Cell_type)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values
+rss_values <- rss_values[-grep('_-_-', rownames(rss_values), fixed=TRUE), ]
+rss_values <- rss_values[-grep('_+_-', rownames(rss_values), fixed=TRUE),]
+l <- rownames(rss_values)
+rownames(rss_values) <- substr(l,1,nchar(l)-2)
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$ACC_Cell_type)){
+  print(x)
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$ACC_Cell_type)])/sum(rowSums(dgem[,grep(x, cell_data$ACC_Cell_type)]))*10^6+1)))
+}
+exp_mat <- t(data.table::rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat
+```
+
+```{r}
+sel_rel <- c(positive, negative, paste0(both, '_+'), paste0(both, '_-'))
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/HQ_regulons_07.RDS')
+```
+
+```{r}
+library(ggplot2)
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/Regulon_dotplot_all_RSS_suppl_07.pdf', g, width=18, height=6)
+```
+
+```{r}
+sel_rel <-  c('NFKB2', 'NFKB1', 'REL', 'PAX5', 'IRF4', 'EBF1', 'ETS1', 'EGR1', 'HNF1A', 'HNF4A', 'FOXA1', 'FOSL2', 'NFE2', 'TAL1', 'GATA1', 'GATA2', 'FOSL1')
+sel_rel <- paste0(sel_rel, '_+')
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+rss_values <- rss_values[sel_rel,]
+x <- t(rss_values)
+dist.mat <- dist(x)
+clust <- hclust(dist.mat)
+rss_values <- rss_values[,clust$order]
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  #print(rel)
+  for (name in colnames(rss_values)){
+      #print(name)
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('forestgreen',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/Selected_unibind_dotplot_viridis.pdf', g, width=6, height=6)
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/sel_rel_order.RDS')
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", space = "Lab") + 
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/Selected_unibind_dotplot_reds_selected.pdf', g, width=6, height=6)
+```
+

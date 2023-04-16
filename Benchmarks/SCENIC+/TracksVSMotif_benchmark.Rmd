@@ -1,0 +1,1154 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+tfs_per_method <- list()
+gene_regulons_per_method <- list()
+region_regulons_per_method <- list()
+```
+
+- SCENIC+
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+gene_regulon_list <- regulon_list
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+region_regulon_list <- regulon_list
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.RDS')
+```
+
+```{r}
+region_regulon_list <- region_regulon_list[sel_rel]
+gene_regulon_list <- gene_regulon_list[sel_rel]
+tfs_per_method[['SCENIC+_motif']] <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+gene_regulons_per_method[['SCENIC+_motif']] <- gene_regulon_list
+region_regulons_per_method[['SCENIC+_motif']] <- region_regulon_list
+```
+
+- Tracks
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_track/SCENIC+_gene_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+gene_regulon_list <- regulon_list
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_track/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+region_regulon_list <- regulon_list
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_track/HQ_regulons_07.RDS')
+```
+
+```{r}
+region_regulon_list <- region_regulon_list[sel_rel]
+gene_regulon_list <- gene_regulon_list[sel_rel]
+tfs_per_method[['SCENIC+_track']] <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+gene_regulons_per_method[['SCENIC+_track']] <- gene_regulon_list
+region_regulons_per_method[['SCENIC+_track']] <- region_regulon_list
+```
+
+- Track+Motif
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_track_motif/SCENIC+_gene_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+gene_regulon_list <- regulon_list
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_track_motif/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+region_regulon_list <- regulon_list
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_track_motif/HQ_regulons_07.RDS')
+```
+
+```{r}
+region_regulon_list <- region_regulon_list[sel_rel]
+gene_regulon_list <- gene_regulon_list[sel_rel]
+tfs_per_method[['SCENIC+_track_motif']] <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+gene_regulons_per_method[['SCENIC+_track_motif']] <- gene_regulon_list
+region_regulons_per_method[['SCENIC+_track_motif']] <- region_regulon_list
+```
+
+```{r}
+saveRDS(tfs_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+saveRDS(gene_regulons_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/gene_regulons_per_method.RDS')
+saveRDS(region_regulons_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/region_regulons_per_method.RDS')
+```
+
+# Panel c
+## Number of genes per regulon
+
+```{r}
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/gene_regulons_per_method.RDS')
+dt <- data.frame()
+for (name in names(gene_regulons_per_method)){
+  print(name)
+  print(median(lengths(gene_regulons_per_method[[name]])))
+  print(mean(lengths(gene_regulons_per_method[[name]])))
+  x <- as.data.frame(cbind(lengths(gene_regulons_per_method[[name]]), rep(name, length(gene_regulons_per_method[[name]]))))
+  colnames(x) <-  c('Value', 'Method')
+  dt <- rbind(dt, x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels = c('SCENIC+_track_motif', "SCENIC+_motif", 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panelc/Number_of_genes_per_regulon_all.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+
+## Number of regions per regulon
+```{r}
+region_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/region_regulons_per_method.RDS')
+dt <- data.frame()
+for (name in names(region_regulons_per_method)){
+  print(name)
+  print(median(lengths(region_regulons_per_method[[name]])))
+  #print(mean(lengths(region_regulons_per_method[[name]])))
+  x <- as.data.frame(cbind(lengths(region_regulons_per_method[[name]]), rep(name, length(region_regulons_per_method[[name]]))))
+  colnames(x) <-  c('Value', 'Method')
+  dt <- rbind(dt, x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels = c('SCENIC+_track_motif', "SCENIC+_motif", 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panelc/Number_of_regions_per_regulon_all.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+
+## Number of TFs per method
+
+```{r}
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- cbind(as.data.frame(lengths(tfs_per_method)), names(tfs_per_method))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+data[,2] <- factor(data[,2], levels = c('SCENIC+_track_motif', "SCENIC+_motif", 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panelc/Number_of_TFs_per_method.pdf')
+ggplot(data, aes(fill=Method, y=value, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale 
+dev.off()
+
+ggplot(data, aes(fill=Method, y=value, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+```
+
+# Panel d - TF recovery
+
+## Suppl - For all, including SCENIC versions
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+df <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+  names(y) <- names(ordered_ls)
+  x <- 1:length(y)
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+}
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_all.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') 
+```
+
+```{r}
+# Zoom in in the beginning part
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') + xlim(c(0,40)) + ylim(c(0,20))
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+df3 <- df2
+df3 <- df3[which(df3$x <=40),]
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df3$x <- range01(df3$x)
+df3$y <- range01(df3$y)
+library(DescTools)
+auc_list<-list()
+for (method in unique(df3$Method)){
+  auc_list[[method]] <- AUC(df3[which(df3$Method == method), c('x')], df3[which(df3$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_Unibind_AUC.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+## Use precision/recall instead
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+library(ROCit)
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  #rocs <- evalmod(scores = ordered_ls, labels = labels)$rocs
+  rocs <- measureit(score = ordered_ls, class = labels)
+  y <- (as.vector(unlist(rocs$TP)))/(as.vector(unlist(rocs$TP))+as.vector(unlist(rocs$FP)))
+  #y <- (as.vector(unlist(rocs$TP)))/(as.vector(unlist(rocs$TP))+as.vector(unlist(rocs$FN)))
+  x <- (as.vector(unlist(rocs$FN)))/(as.vector(unlist(rocs$FN))+as.vector(unlist(rocs$TN)))
+  #x <- (as.vector(unlist(rocs$FP)))/(as.vector(unlist(rocs$FP))+as.vector(unlist(rocs$TN)))
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+df2 <- df2[order(df2$x),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_all_ROCs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TPR') + xlab('FPR') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TPR') + xlab('FPR') 
+```
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$prcs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_all_PRs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- dfx
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_all_PRs_AUC.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+## TF recovery using LogFC instead
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.RDS')
+tf_list <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/cflerin/resources/allTFs_hg38.txt')))
+sel_tfs <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+x <- get_cluster_markers(loom, clustering.id = 0)
+for (i in 1:length(x)){
+  m <- x[[i]][,'avg_logFC', drop=FALSE]
+  colnames(m) <- names(x)[i]
+  x[[i]] <- m
+} 
+
+mat <- merge(x[[1]], x[[2]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[3]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[4]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[5]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[6]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[7]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[8]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- as.matrix(mat)
+maxs <- rowMaxs(mat, na.rm=T)
+names(maxs) <- rownames(mat)
+maxs <- maxs[which(names(maxs) %in% tf_list)]
+ls <- maxs
+```
+
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$prcs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+df2$Method <- as.factor(df2$Method)
+df2$Method <- droplevels(df2$Method)
+colnames(df2) <- c('x', 'y', 'Method')
+df2 <- df2[order(df2$y),] 
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_markers_selected_PRs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df2 <- dfx
+colnames(df2) <- c('Value', 'anal')
+df2[,1] <- as.numeric(df2[,1])
+colnames(df2) <- c('Value', 'Method')
+df2$Value <- as.numeric(unlist(df2$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_markers_selected_PRs_AUC.pdf')
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+df <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+  names(y) <- names(ordered_ls)
+  x <- 1:length(y)
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+}
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_recovery_markers_main.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of LogFC') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Log FC') 
+```
+
+```{r}
+df3 <- df2
+df3 <- df3[which(df3$x <=374),]
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df3$x <- range01(df3$x)
+df3$y <- range01(df3$y)
+library(DescTools)
+auc_list<-list()
+for (method in unique(df3$Method)){
+  auc_list[[method]] <- AUC(df3[which(df3$Method == method), c('x')], df3[which(df3$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/paneld/TF_marker_AUC_main.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+```
+
+# Panel e - TF-to-region
+
+```{r}
+region_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/region_regulons_per_method.RDS')
+consensus_peaks <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/MACS_ATAC/iterative/peak_filtering_norm/combined_summits_final.bed')
+consensus_peaks <- paste0(consensus_peaks[,1], ':', consensus_peaks[,2], '-', consensus_peaks[,3])
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/'
+files <- list.files(path)
+unibind_list <- list()
+for (file in files){
+  df <- read.delim(paste0(path, file), header=FALSE)
+  TF <- strsplit(file, split = "\\.")[[1]][3]
+  regions <- paste0(df[,1], ':', df[,2], '-', df[,3])
+  if (TF %in% names(unibind_list)){
+    unibind_list[[TF]] <- unique(c(unibind_list[[TF]], regions))
+  } else {
+    unibind_list[[TF]]  <- unique(regions)
+  }
+}
+saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/unibind_to_consensus.RDS')
+```
+
+```{r}
+# Merge + and - when possible
+unibind_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/unibind_to_consensus.RDS')
+tracks <- names(region_regulons_per_method)
+for (method in tracks){
+  regulon_list <- region_regulons_per_method[[method]]
+  l <- names(regulon_list)
+  names(regulon_list) <- substr(l,1,nchar(l)-2)
+  regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+  region_regulons_per_method[[method]] <- regulon_list
+}
+```
+
+```{r}
+library(caret)
+metrics_list <- list()
+for (method in names(region_regulons_per_method)){
+  eregulons_list <- region_regulons_per_method[[method]]
+  unibind_list_x <- unibind_list[which(names(unibind_list) %in% names(eregulons_list))]
+  eregulons_list <- eregulons_list[which(names(eregulons_list) %in% names(unibind_list_x))]
+  eregulons_list <- eregulons_list[names(unibind_list_x)]
+  print(method)
+  print(length(eregulons_list))
+  prec_list <- list()
+  recall_list <- list()
+  F1_list <- list()
+  for (TF in names(unibind_list_x)){
+    true_pos <- rep(0, length(consensus_peaks))
+    true_pos[which(consensus_peaks %in% unibind_list_x[[TF]])] <- 1
+    true_pos <- as.factor(true_pos)
+    prec_vector <- vector()
+    recall_vector <- vector()
+    F1_vector <- vector()
+    for (TF_2 in names(eregulons_list)){
+      pred_pos <- rep(0, length(consensus_peaks))
+      pred_pos[which(consensus_peaks %in% eregulons_list[[TF_2]])] <- 1
+      pred_pos <- as.factor(pred_pos)
+      precision <- posPredValue(pred_pos, true_pos, positive="1", na.rm = TRUE)
+      recall <- sensitivity(pred_pos, true_pos, positive="1")
+      F1 <- (2 * precision * recall) / (precision + recall)
+      prec_vector <- c(prec_vector, precision)
+      recall_vector <- c(recall_vector, recall)
+      F1_vector <- c(F1_vector, F1)
+    }
+    prec_list[[TF]] <-prec_vector
+    recall_list[[TF]] <- recall_vector
+    F1_list[[TF]] <- F1_vector
+  }
+  metrics_list[[method]] <- list()
+  metrics_list[[method]][['Precision']] <- prec_list
+  metrics_list[[method]][['Recall']] <- recall_list
+  metrics_list[[method]][['F1']] <- F1_list
+}
+saveRDS(metrics_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tf_to_region_metrics_list.RDS')
+```
+
+
+## Unibind calculation
+
+```{r}
+metrics_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/tf_to_region_metrics_list.RDS')
+```
+
+```{r}
+precision_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['Precision']]))
+  precision_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(precision_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(precision_list[[name]])) > 0){
+  precision_list[[name]] <- precision_list[[name]][-which(is.na(precision_list[[name]]))]
+  }
+}
+
+recall_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['Recall']]))
+  recall_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(recall_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(recall_list[[name]])) > 0){
+    recall_list[[name]] <- recall_list[[name]][-which(is.na(recall_list[[name]]))]
+  }
+}
+
+F1_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['F1']]))
+  F1_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(F1_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(F1_list[[name]])) > 0){
+    F1_list[[name]] <- F1_list[[name]][-which(is.na(F1_list[[name]]))]
+  }
+}
+```
+
+```{r}
+d <- data.frame(x = unlist(precision_list), 
+                  grp = rep(names(precision_list)[1:length(precision_list)],times = sapply(precision_list,length)))
+d <- d[complete.cases(d),]
+
+write.table(d, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/Unibind_precision_values.tsv', sep='\t', quote=FALSE)
+```
+
+## Seppe's violin
+
+### Unibind
+
+```{r}
+data <- data.table::fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/Unibind_F1_values.tsv', sep='\t')
+colnames(data) <- c('TF_name', 'x', 'grp')
+data <- data[complete.cases(data),]
+data$TF_name <- sapply(strsplit(data$TF_name, '\\.'), '[', 2)
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+```
+
+```{R}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+library(ggrepel)
+library(ggplot2)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'x', 'grp')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_motif', 'SCENIC+_track_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_Unibind_Seppe_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- data.table::fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/Unibind_precision_values.tsv', sep='\t')
+colnames(data) <- c('TF_name', 'x', 'grp')
+data <- data[complete.cases(data),]
+data$TF_name <- sapply(strsplit(data$TF_name, '\\.'), '[', 2)
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+```
+
+```{R}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+library(ggrepel)
+library(ggplot2)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'x', 'grp')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_motif', 'SCENIC+_track_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_Unibind_Seppe_precision.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+
+```{r}
+data <- data.table::fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/Unibind_recall_values.tsv', sep='\t')
+colnames(data) <- c('TF_name', 'x', 'grp')
+data <- data[complete.cases(data),]
+data$TF_name <- sapply(strsplit(data$TF_name, '\\.'), '[', 2)
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+```
+
+```{R}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+library(ggrepel)
+library(ggplot2)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'x', 'grp')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_motif', 'SCENIC+_track_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_Unibind_Seppe_recall.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+### ChIP-seq
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/motif_track_scenicplus_comparison/F1_chip.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+data$grp <- gsub('SCENIC+ tracks and motifs', 'SCENIC+_track_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ motifs', 'SCENIC+_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ tracks', 'SCENIC+_track', data$grp, fixed=TRUE)
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_ChIP-seq_Seppe_F1.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/motif_track_scenicplus_comparison/PREC_chip.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+data$grp <- gsub('SCENIC+ tracks and motifs', 'SCENIC+_track_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ motifs', 'SCENIC+_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ tracks', 'SCENIC+_track', data$grp, fixed=TRUE)
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_ChIP-seq_Seppe_precision.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/motif_track_scenicplus_comparison/REC_chip.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+data$grp <- gsub('SCENIC+ tracks and motifs', 'SCENIC+_track_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ motifs', 'SCENIC+_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ tracks', 'SCENIC+_track', data$grp, fixed=TRUE)
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_ChIP-seq_Seppe_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+### Enformer
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/motif_track_scenicplus_comparison/F1_enformer.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+data$grp <- gsub('SCENIC+ tracks and motifs', 'SCENIC+_track_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ motifs', 'SCENIC+_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ tracks', 'SCENIC+_track', data$grp, fixed=TRUE)
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_enformer_Seppe_F1.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/motif_track_scenicplus_comparison/PREC_enformer.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+data$grp <- gsub('SCENIC+ tracks and motifs', 'SCENIC+_track_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ motifs', 'SCENIC+_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ tracks', 'SCENIC+_track', data$grp, fixed=TRUE)
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_enformer_Seppe_precision.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/motif_track_scenicplus_comparison/REC_enformer.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+data$grp <- gsub('SCENIC+ tracks and motifs', 'SCENIC+_track_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ motifs', 'SCENIC+_motif', data$grp, fixed=TRUE)
+data$grp <- gsub('SCENIC+ tracks', 'SCENIC+_track', data$grp, fixed=TRUE)
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panele/TF_to_region_enformer_Seppe_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+## TF Perturbation precision-recall
+
+```{r}
+# Regulon list
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+library(ROCit)
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+f1_df <- data.frame()
+pr_df <- data.frame()
+rec_df <- data.frame()
+for (method in c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track')){
+  print(method)
+  regulon_list <- gene_regulons_per_method[[method]]
+  
+  regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+  deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+  common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+  deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+  regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+  for (name in names(deseq_sub)){
+    print(name)
+    tf <- strsplit(name, '_')[[1]][2]
+    rank <- deseq_sub[[name]]$stat
+    names(rank) <- rownames(deseq_sub[[name]])
+    ordered_ls <- rev(sort(abs(rank)))
+    labels <- rep(0, length(ordered_ls))
+    names(labels) <- names(ordered_ls)
+    labels[which(names(labels) %in% regulon_list[[grep(tf, names(regulon_list))[1]]])] <- 1
+    #rocs <- evalmod(scores = ordered_ls, labels = labels)$rocs
+    rocs <- measureit(score = ordered_ls, class = labels, measure=c('REC', 'PREC', 'FSCR'))
+    index <- which.max(rocs$FSCR)
+    f1_df <- rbind(f1_df, cbind(name, method, rocs$FSCR[index], tf))
+    pr_df <- rbind(pr_df, cbind(name, method, rocs$PREC[index], tf))
+    rec_df <- rbind(rec_df, cbind(name, method, rocs$REC[index], tf))
+  }
+}
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- f1_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panelg/TF_perturbation_F1.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- pr_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panelg/TF_perturbation_precision.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+```{r}
+myColors <- c("SCENIC+_motif"= 'red', "SCENIC+_track"= 'indianred1', "SCENIC+_track_motif"= 'brown4')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+_motif", "SCENIC+_track_motif"), c("SCENIC+_motif", "SCENIC+_track")))
+d <- rec_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('SCENIC+_track_motif', 'SCENIC+_motif', 'SCENIC+_track'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/tracks_benchmark/plots/panelg/TF_perturbation_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+

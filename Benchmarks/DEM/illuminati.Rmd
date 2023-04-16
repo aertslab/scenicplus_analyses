@@ -1,0 +1,350 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Make cluster trees based on cisTarget output
+
+```{r}
+library(motifStack)
+motifs_1 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+names(motifs_1) <- gsub('\\.$', '', names(motifs_1))
+motifs_2 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar', format='jaspar')
+motifs <- c(motifs_1, motifs_2)
+```
+
+```{r}
+library(XML)
+x <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX9_AST.html')
+selected_motifs <- as.vector(unlist(x[[1]][,1]))[1:30]
+y <- selected_motifs
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/AST_CTX.pdf', height=10, width=5)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+```{r}
+library(motifStack)
+motifs_1 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+names(motifs_1) <- gsub('\\.$', '', names(motifs_1))
+motifs_2 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar', format='jaspar')
+motifs <- c(motifs_1, motifs_2)
+```
+
+```{r}
+library(XML)
+x <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX10_OL.html')
+selected_motifs <- as.vector(unlist(x[[1]][,1]))[1:30]
+y <- unique(c(y, selected_motifs))
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/OL_CTX.pdf', height=10, width=5)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+```{r}
+library(motifStack)
+motifs_1 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+names(motifs_1) <- gsub('\\.$', '', names(motifs_1))
+motifs_2 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar', format='jaspar')
+motifs <- c(motifs_1, motifs_2)
+```
+
+```{r}
+library(XML)
+x <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX10_MEL.html')
+selected_motifs <- as.vector(unlist(x[[1]][,1]))[1:30]
+y <- unique(c(y, selected_motifs))
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/MEL_CTX.pdf', height=10, width=5)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+# Make cluster trees based on DEM output
+
+```{r}
+library(motifStack)
+motifs_1 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+names(motifs_1) <- gsub('\\.$', '', names(motifs_1))
+motifs_2 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar', format='jaspar')
+motifs <- c(motifs_1, motifs_2)
+```
+
+```{r}
+library(XML)
+x <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/OLD/SOX9_AST_DEM_v2.html')
+selected_motifs <- as.vector(unlist(x[[1]][,1]))[1:30]
+y <- unique(c(y, selected_motifs))
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/AST_DEM.pdf', height=10, width=5)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+```{r}
+library(motifStack)
+motifs_1 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+names(motifs_1) <- gsub('\\.$', '', names(motifs_1))
+motifs_2 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar', format='jaspar')
+motifs <- c(motifs_1, motifs_2)
+```
+
+```{r}
+library(XML)
+x <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/OLD/SOX10_OL_DEM_v2.html')
+selected_motifs <- as.vector(unlist(x[[1]][,1]))[1:30]
+y <- unique(c(y, selected_motifs))
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/OL_DEM.pdf', height=10, width=5)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+
+```{r}
+library(motifStack)
+motifs_1 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+names(motifs_1) <- gsub('\\.$', '', names(motifs_1))
+motifs_2 <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar', format='jaspar')
+motifs <- c(motifs_1, motifs_2)
+```
+
+```{r}
+library(XML)
+x1 <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/OLD/SOX10_MEL_DEM_v2.html')
+x2 <- readHTMLTable('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX10_MEL_DEM_v3.html')
+x <- rbind(x1[[1]], x2[[1]])
+x <- x[rev(order(x$Log2FC)),]
+selected_motifs <- unique(as.vector(unlist(x[,1])))[1:30]
+y <- unique(c(y, selected_motifs))
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/MEL_DEM.pdf', height=10, width=5)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+```{r}
+saveRDS(y, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/selected_motifs.RDS')
+```
+
+# Triangle plot
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+rownames(human) <- human[,1]
+```
+
+```{r}
+y <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/selected_motifs.RDS')
+CRM_scores <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/CRM_matrix.tsv', header=TRUE)
+ast <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX9_AST_SCREEN_regions.tsv', sep='\t')[,1]))
+ol <-  as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX10_OL_SCREEN_regions.tsv', sep='\t')[,1]))
+mel <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/SOX10_MEL_SCREEN_regions.tsv', sep='\t')[,1]))
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/venn_plot.pdf', height=8, width=8)
+gplots::venn(list(Astrocytes=ast, Oligodendrocytes=ol, Melanoma=mel))
+dev.off()
+```
+
+```{r}
+astu <- ast[-which(ast %in% c(ol, mel))]
+astu <- gsub(':', '.', astu)
+astu <- gsub('-', '.', astu)
+olu <- ol[-which(ol %in% c(ast, mel))]
+olu <- gsub(':', '.', olu)
+olu <- gsub('-', '.', olu)
+melu <- mel[-which(mel %in% c(ol, ast))]
+melu <- gsub(':', '.', melu)
+melu <- gsub('-', '.', melu)
+```
+
+```{r}
+rownames(CRM_scores) <- CRM_scores[,1]
+CRM_scores <- CRM_scores[,-1]
+```
+
+```{r}
+Astrocytes <- rowMeans(CRM_scores[y, astu])
+Melanoma <- rowMeans(CRM_scores[y, melu])
+Oligodendrocytes <- rowMeans(CRM_scores[y, olu])
+```
+
+```{r}
+library(ggplot2)
+library(ggtern)
+Scores <- as.data.frame(cbind(y, human[y, 'Direct_annot'], Astrocytes, Melanoma, Oligodendrocytes))
+colnames(Scores)[2] <- 'annot'
+Scores[which(Scores$annot == ""), 'annot'] <- human[rownames(Scores[which(Scores$annot == ""),]), 'Orthology_annot']
+Scores$annot[grep('SOX', Scores$annot)] <- 'SOX'
+Scores$annot[grep('TFAP2A', Scores$annot)] <- 'TFAP'
+Scores$annot[grep('TFAP2C', Scores$annot)] <- 'TFAP'
+Scores$annot[grep('MITF', Scores$annot)] <- 'MITF'
+Scores$annot[grep('BATF', Scores$annot)] <- 'AP1'
+Scores$annot[grep('JUN', Scores$annot)] <- 'AP1'
+Scores$annot[grep('LHX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('NFI', Scores$annot)] <- 'NFI'
+Scores$annot[grep('ALX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('ASC', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('BACH', Scores$annot)] <- 'AP1'
+Scores$annot[grep('EN', Scores$annot)] <- 'HOX'
+Scores$annot[grep('ELK', Scores$annot)] <- 'ETS'
+Scores$annot[grep('ETS', Scores$annot)] <- 'ETS'
+Scores$annot[grep('OLIG', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('ZBTB', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('EVX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('HOX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('RUNX', Scores$annot)] <- 'RUNX'
+Scores$annot[grep('NEURO', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('TWIST', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('TCF', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('MYF', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('RFX', Scores$annot)] <- 'RFX'
+Scores$annot[grep('NFE', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('HAND', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('LMX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('GBX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('TFAP4', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('FIGLA', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('MEF2C', Scores$annot)] <- 'AP1'
+Scores$annot[grep('ZNF354', Scores$annot)] <- 'RUNX'
+Scores$annot[grep('MYBL', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('POU', Scores$annot)] <- 'HOX'
+Scores$annot[grep('EMX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('LBX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('VSX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('TFE', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('MNX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('SRY', Scores$annot)] <- 'SOX'
+Scores$annot[grep('PAX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('NHLH', Scores$annot)] <- 'OLIG'
+Scores$annot[grep('YY', Scores$annot)] <- 'YY'
+Scores$annot[grep('DLX', Scores$annot)] <- 'HOX'
+Scores$annot[grep('FOX', Scores$annot)] <- 'FOX'
+Scores$annot[grep('MEIS', Scores$annot)] <- 'MEIS'
+Scores$annot[grep('NR', Scores$annot)] <- 'NR'
+Scores$annot[grep('ZNF611', Scores$annot)] <- 'NR'
+
+.distinctColorPalette <-function(k) {
+  set.seed(123)
+  if(packageVersion("scales") >= '1.1.0'){
+    ColorSpace <- t(unique(col2rgb(scales::hue_pal(l=85)(2e3))))
+  } else {
+    ColorSpace <- t(unique(col2rgb(scales::hue_pal(l=60:100)(2e3))))
+  }
+  km <- kmeans(ColorSpace, k, iter.max=20)
+  colors <- rgb(round(km$centers), maxColorValue=255)
+  return(colors)
+}
+
+colorvec <- .distinctColorPalette(length(unique(Scores$annot)))
+names(colorvec) <- unique(Scores$annot)
+colors <- as.vector(colorvec[as.vector(Scores$annot)])
+
+
+diagram <- ggtern(data = as.data.frame(Scores), aes(x = as.numeric(Astrocytes), y = as.numeric(Melanoma), z = as.numeric(Oligodendrocytes))) + geom_point(size = 3, shape = 21, color = 'red') + ggtitle("Average cistrome score per layer") + theme_rgbw() + theme_zoom_center(0.6) 
+diagram
+diagram <- ggtern(data = as.data.frame(Scores), aes(x = as.numeric(Astrocytes), y = as.numeric(Melanoma), z = as.numeric(Oligodendrocytes))) + geom_point(size = 3, shape = 21, color = 'red') + guides(color=FALSE) + theme_rgbw() + labs(x = "Astrocyte SOX cistrome", xarrow  = "Astrocytes SOX cistrome",y = "Melanoma SOX cistrome", yarrow  = "Melanoma SOX cistrome", z = "Oligodendrocytes SOX cistrome", zarrow  = "Oligodendrocytes SOX cistrome") + theme_zoom_center(0.6) + geom_text(aes(label = annot))
+diagram
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/illuminati.pdf')
+diagram <- ggtern(data = as.data.frame(Scores), aes(x = as.numeric(Astrocytes), y = as.numeric(Melanoma), z = as.numeric(Oligodendrocytes))) + geom_point(aes(colour = as.factor(annot)), size = 3, shape = 16) + guides(color=FALSE) + theme_rgbw() + scale_colour_manual(values = colorvec) + labs(x = "Astrocyte SOX cistrome", xarrow  = "Astrocytes SOX cistrome",y = "Melanoma SOX cistrome", yarrow  = "Melanoma SOX cistrome", z = "Oligodendrocytes SOX cistrome", zarrow  = "Oligodendrocytes SOX cistrome")
+diagram
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/motifstacks/illuminati_zoom.pdf')
+diagram <- ggtern(data = as.data.frame(Scores), aes(x = as.numeric(Astrocytes), y = as.numeric(Melanoma), z = as.numeric(Oligodendrocytes))) + geom_point(aes(colour = as.factor(annot)), size = 3, shape = 16) + guides(color=FALSE) + theme_rgbw() + scale_colour_manual(values = colorvec) + labs(x = "Astrocyte SOX cistrome", xarrow  = "Astrocytes SOX cistrome",y = "Melanoma SOX cistrome", yarrow  = "Melanoma SOX cistrome", z = "Oligodendrocytes SOX cistrome", zarrow  = "Oligodendrocytes SOX cistrome") + theme_zoom_center(0.6) 
+diagram
+dev.off()
+```
+cat /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/individual/* > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/archetype_pwm.jaspar
+
+{ xargs cat < ${file}; } > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/singletons/${file_name}.cb
+
+```{r}
+write.table(paste0(y[grep('metacluster', y)], '.cb'), file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/metaclusters.txt', quote=FALSE, row.names=FALSE, col.names=FALSE)
+write.table(paste0(y[-grep('metacluster', y)], '.cb'), file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/singlets.txt', quote=FALSE, row.names=FALSE, col.names=FALSE)
+
+write.table(y, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/motifs.txt', quote=FALSE, row.names=FALSE, col.names=FALSE)
+```
+
+cd /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb/
+{ xargs cat < /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/metaclusters.txt; } > /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/metaclusters.cb
+
+cd /staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant
+{ xargs cat < /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/singlets.txt; } > /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/singlets.cb
+
+cat /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/metaclusters.cb /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/singlets.cb > /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/stamp.cb
+
+singularity run -B /staging/leuven/stg_00002/, /staging/leuven/res_00001/software/rsat/rsat-core_2020.02.29--py37pl526r36hc99cbb1_0.sif convert-matrix -from cluster-buster -to transfac /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/stamp.cb -o /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/stamp.transfac
+
+sed -i '/metacluster/ s/\./_/g' /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/motifs.transfac
+sed -i '/ID/ s/\./_/g' /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/motifs.transfac
+sed -i '/AC/ s/\./_/g' /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/motifs.transfac
+sed -i 's/\./_/g'  motifs_x.txt
+
+```{r}
+library(motifStack)
+motifs <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/motifs.transfac', format='transfac')
+```
+
+module load STAMP
+module load Python
+
+python STAMP_V10.py  /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/stamp/motifs.txt -d /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DEM_showcase/STAMP
+

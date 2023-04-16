@@ -1,0 +1,220 @@
+---
+title: "GRaNIE DPCL"
+author: "Christian Arnold, Judith Zaugg, Rim Moussa"
+date: "`r BiocStyle::doc_date()`"
+package: "`r BiocStyle::pkg_ver('GRaNIE')`"
+vignette: >
+  %\VignetteIndexEntry{Workflow example}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+      code_folding: hide
+---
+
+# 0. Set up
+```{r <knitr, echo=FALSE, message=FALSE, results="hide", class.output="scroll-200"}
+library("knitr")
+opts_chunk$set(
+  tidy = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  fig.align="center",
+  results='hold')
+```
+
+```{r loadLibaries2, echo=TRUE, message=FALSE, results="hide", warning=FALSE, class.output="scroll-200"}
+library(tidyverse)
+library(GRaNIE)
+library(feather)
+library(SCopeLoomR)
+```
+
+
+# 1. Load data 
+
+```{r importData, echo=TRUE, include=TRUE, class.output="scroll-200"}
+# RNA
+library(feather)
+GEX_counts_fname <- "/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/data/count_matrices/scRNA_count_matrix.feather"
+GEX_counts <- read_feather(GEX_counts_fname)
+# Subset genes
+sc_genes <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/scplus_genes.txt')[,1]))
+GEX_counts <- GEX_counts[which(GEX_counts$index %in% sc_genes),]
+GEX_counts[2:ncol(GEX_counts)] <- sapply(GEX_counts[2:ncol(GEX_counts)], as.numeric)
+
+# ATAC
+ACC_counts_fname <- "/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/data/count_matrices/sc_fragment_matrix.feather"
+ACC_counts <- read_feather(ACC_counts_fname)
+colnames(ACC_counts) <- gsub('___DPLC', '', colnames(ACC_counts))
+# Subset peaks
+sc_peaks <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/scplus_regions.txt')[,1]))
+ACC_counts <- ACC_counts[which(ACC_counts$index %in% sc_peaks),]
+ACC_counts[2:ncol(ACC_counts)] <- ACC_counts[2:ncol(ACC_counts)]+1
+ACC_counts <- ACC_counts[,colnames(GEX_counts)]
+
+# Metadata
+library(SCopeLoomR)
+fname <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(fname)
+cell_data <- get_cell_annotation(loom)
+rownames(cell_data) <- gsub('___DPLC', '', rownames(cell_data))
+cell_data$sample_id <- rownames(cell_data)
+cell_data <- as_tibble(cell_data)
+cell_data <- cell_data[,c('sample_id', colnames(cell_data)[-which(colnames(cell_data) == 'sample_id')])]
+
+# Save the name of the respective ID columns as in the tutorial
+idColumn_peaks <- 'peakID'
+idColumn_RNA <- 'ENSEMBL'
+colnames(ACC_counts)[1] <- 'peakID'
+colnames(GEX_counts)[1] <- 'ENSEMBL'
+
+# Convert names to ensembl ids
+#library("org.Hs.eg.db") 
+#ensemblids <- mapIds(org.Hs.eg.db, keys = GEX_counts$ENSEMBL, keytype = "SYMBOL", column="ENSEMBL")
+#GEX_counts$ENSEMBL <- ensemblids
+```
+
+#2. Initialize a `GRaNIE` object
+
+```{r initializeObject, echo=TRUE, include=TRUE, class.output="scroll-200"}
+# Genome assembly
+genomeAssembly = "hg38" 
+# Optional and arbitrary list with information and metadata that is stored within the GRaNIE object
+objectMetadata.l = list(name                = paste0("DPCL"),
+                        file_peaks          = ACC_counts_fname,
+                        file_rna            = GEX_counts_fname,
+                        file_sampleMetadata = fname,
+                        genomeAssembly      = genomeAssembly)
+# Output directory
+dir_output = "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/"
+GRN = initializeGRN(objectMetadata = objectMetadata.l,
+                    outputFolder = dir_output,
+                    genomeAssembly = genomeAssembly)
+GRN
+```
+
+
+```{r addData, echo=TRUE, include=TRUE, eval = FALSE, class.output="scroll-200"}
+GRN <-  addData(GRN,
+              ACC_counts, normalization_peaks = "DESeq_sizeFactor", idColumn_peaks = idColumn_peaks,
+              GEX_counts, normalization_rna = "quantile", idColumn_RNA = idColumn_RNA,
+              sampleMetadata = cell_data,
+              forceRerun = TRUE)
+```
+
+```{r}
+saveRDS(GRN, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+# 3. Add motifs
+
+```{r addTFBS, echo=TRUE, include=TRUE, eval = FALSE, class.output="scroll-200", results='hold'}
+motifFolder <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/hg38/PWMScan_HOCOMOCOv11'
+GRN <- addTFBS(GRN, motifFolder = motifFolder, TFs = "all", filesTFBSPattern = "_TFBS", fileEnding = ".bed", forceRerun = TRUE)
+GRN <- overlapPeaksAndTFBS(GRN, nCores = 8, forceRerun = TRUE)
+```
+
+```{r}
+saveRDS(GRN, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+
+# 4. Add TF-enhancer connections
+
+```{r addTFPeakConnections, echo=TRUE, include=TRUE, eval = TRUE, class.output="scroll-200", results='hold'}
+GRN = addConnections_TF_peak(GRN, plotDiagnosticPlots = FALSE,
+                                     connectionTypes = c("expression"),
+                                     corMethod = "pearson", forceRerun = TRUE)
+saveRDS(GRN, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+```{r}
+GRN <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+# 5. Quality control 2: Diagnostic plots for TF-enhancer connections
+
+```{r, echo=FALSE, include=TRUE, eval = TRUE, class.output="scroll-200", results='hold'}
+GRN = plotDiagnosticPlots_TFPeaks(GRN, outputFolder="/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/plots", forceRerun = TRUE)
+```
+
+# 6. Run the AR classification and QC (optional) 
+
+
+```{r runARClassification, echo=TRUE, include=TRUE, eval = FALSE, class.output="scroll-200"}
+GRN = AR_classification_wrapper(GRN, significanceThreshold_Wilcoxon = 0.05,
+                                outputFolder = "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/plots", 
+                                plot_minNoTFBS_heatmap = 100, plotDiagnosticPlots = FALSE,
+                                forceRerun = TRUE)
+saveRDS(GRN, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+
+# 7. Add enhancer-gene connections
+
+- Changed hardcoded biomart host and putting ensemb
+
+```{r}
+install.packages("/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRaNIE", 
+    repos = NULL, 
+    type='source')
+```
+
+```{r addPeakGeneConnections, echo=TRUE, include=TRUE, eval = TRUE, class.output="scroll-200"}
+GRN = addConnections_peak_gene(GRN,
+                               corMethod = "pearson", promoterRange = 150000, TADs = NULL,
+                               nCores = 14, plotDiagnosticPlots = FALSE, plotGeneTypes = list(c("all")), forceRerun = TRUE)
+saveRDS(GRN, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+# 8. Diagnostic plots for enhancer-gene connections
+
+```{r, echo=TRUE, class.output="scroll-200"}
+GRN = plotDiagnosticPlots_peakGene(GRN, gene.types = list(c("all")), plotAsPDF = FALSE, pages = 1)
+```
+
+# 9. Combine TF-enhancer and enhancer-gene connections and filter
+
+```{r combineAndFilter, echo=TRUE, include=TRUE, eval = TRUE, class.output="scroll-200"}
+GRN = filterGRNAndConnectGenes(GRN, TF_peak.fdr.threshold = 0.2,
+                               peak_gene.fdr.threshold = 0.2, peak_gene.fdr.method = "BH", 
+                               gene.types = c("all"),
+                               allowMissingTFs = FALSE, allowMissingGenes = FALSE, filterLoops = FALSE
+                               )
+```
+
+# 10. Add TF-gene correlations (optional)
+
+
+```{r, include=TRUE, eval = TRUE, class.output="scroll-200"}
+GRN = add_TF_gene_correlation(GRN, corMethod = "pearson", nCores = 14, forceRerun = TRUE)
+```
+
+# 11. Retrieve filtered connections
+
+```{r, include=TRUE, eval = TRUE, class.output="scroll-200"}
+GRN_connections.all = getGRNConnections(GRN, type = "all.filtered", include_TF_gene_correlations = TRUE)
+
+saveRDS(GRN_connections.all,file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+```
+
+```{r}
+r2g = getGRNConnections(GRN, type = "peak_genes")
+r2g$padj = p.adjust(r2g$peak_gene.p_raw, method='BH')
+saveRDS(r2g,file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.peak_to_gene.RDS')
+```
+
+Time to save our object again!
+```{r saveObject, echo=TRUE, include=TRUE , eval=FALSE, class.output="scroll-200"}
+GRN = deleteIntermediateData(GRN)
+saveRDS(GRN, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+```
+
+```{r}
+GRN <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/Granie_GRN.RDS')
+t2p = getGRNConnections(GRN, type = "TF_peaks")
+saveRDS(t2p,file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.TF_to_peak.RDS')
+```
+
+

@@ -1,0 +1,644 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Number of motifs per collection
+
+```{r}
+motif_metadata_1 <- read.delim("/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collections_stats_fixed.tsv", sep=' ', header=FALSE)
+colnames(motif_metadata_1) <- motif_metadata_1[1,]
+motif_metadata_1 <- motif_metadata_1[-1,]
+```
+
+```{r}
+motif_metadata <- read.table('/staging/leuven/stg_00002/lcb/ghuls/tmp/tomtom_v10_2022/best_motifs_annotation_after_tomtom.tsv', sep='\t')
+colnames(motif_metadata) <- motif_metadata[1,]
+motif_metadata <- motif_metadata[-1,]
+motif_metadata <- motif_metadata[-grep(' ', motif_metadata$motif_ids),]
+```
+
+```{r}
+x <- table(motif_metadata$motif_collection_name)
+dt <- as.data.frame(as.matrix(x))
+colnames(dt) <- c('Value')
+dt$Type <- 'Unique'
+dt$Collection <- rownames(dt)
+dt_2 <- motif_metadata_1[,c(1,2)]
+colnames(dt_2) <- c('Collection', 'Value')
+dt_2$Type <- 'Shared'
+rownames(dt_2) <- dt_2$Collection
+dt_2$Value_all <- dt_2$Value
+dt$Value_all <- dt_2[dt$Collection, 'Value']
+dt_2[dt$Collection, 'Value'] <- as.numeric(dt_2[dt$Collection, 'Value']) - dt$Value
+dt_2 <- dt_2[,c('Value', 'Type', 'Collection', 'Value_all')]
+dt <- rbind(dt, dt_2)
+rownames(dt) <- NULL
+```
+
+```{r}
+data <- as.data.frame(dt)
+data$Value <- as.numeric(data$Value)
+data$Value_all <- as.numeric(data$Value_all)
+data$Type <- as.factor(data$Type)
+data$Collection <- as.factor(data$Collection)
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Number_of_motifs_per_collection.pdf')
+ggplot(data, aes(fill=Type, y=Value, x=reorder(Collection, Value_all))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + xlab('Collection') + theme(text = element_text(size = 20)) + ylab('Number of motifs')  + stat_summary(fun.y = sum, aes(label = ..y.., group = Collection), geom = "text", vjust = -.2) + coord_flip()
+dev.off()
+```
+
+# Number of annotated motifs in each collection
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_direct <- unique(gsub(' ', '', unlist(strsplit(unique(human$Direct_annot), split = ","))))
+human_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(human$Orthology_annot), split = ","))))
+mouse_direct <- unique(gsub(' ', '', unlist(strsplit(unique(mouse$Direct_annot), split = ","))))
+mouse_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(mouse$Orthology_annot), split = ","))))
+fly_direct <- unique(gsub(' ', '', unlist(strsplit(unique(fly$Direct_annot), split = ","))))
+fly_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(fly$Orthology_annot), split = ","))))
+```
+
+# How many motifs per TF
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_tfs <- table(c(gsub(' ', '', unlist(strsplit(unique(human$Direct_annot), split = ","))), gsub(' ', '', unlist(strsplit(unique(human$Orthology_annot), split = ",")))))
+mouse_tfs <- table(c(gsub(' ', '', unlist(strsplit(unique(mouse$Direct_annot), split = ","))), gsub(' ', '', unlist(strsplit(unique(mouse$Orthology_annot), split = ",")))))
+fly_tfs <- table(c(gsub(' ', '', unlist(strsplit(unique(fly$Direct_annot), split = ","))), gsub(' ', '', unlist(strsplit(unique(fly$Orthology_annot), split = ",")))))
+df <- data.frame()
+x <- cbind(human_tfs, rep('Human', length(human_tfs)), rep('Unclustered', length(human_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(mouse_tfs, rep('Mouse', length(mouse_tfs)), rep('Unclustered', length(mouse_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(fly_tfs, rep('Fly', length(fly_tfs)), rep('Unclustered', length(fly_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+```
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_tfs <- table(c(gsub(' ', '', unlist(strsplit(unique(human$Direct_annot), split = ","))), gsub(' ', '', unlist(strsplit(unique(human$Orthology_annot), split = ",")))))
+mouse_tfs <- table(c(gsub(' ', '', unlist(strsplit(unique(mouse$Direct_annot), split = ","))), gsub(' ', '', unlist(strsplit(unique(mouse$Orthology_annot), split = ",")))))
+fly_tfs <- table(c(gsub(' ', '', unlist(strsplit(unique(fly$Direct_annot), split = ","))), gsub(' ', '', unlist(strsplit(unique(fly$Orthology_annot), split = ",")))))
+x <- cbind(human_tfs, rep('Human', length(human_tfs)), rep('Clustered', length(human_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(mouse_tfs, rep('Mouse', length(mouse_tfs)), rep('Clustered', length(mouse_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(fly_tfs, rep('Fly', length(fly_tfs)), rep('Clustered', length(fly_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+```
+
+```{r}
+df[,1] <- as.numeric(df[,1])
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Number_of_motifs_per_collection_per_species_clust_vs_unclust.pdf')
+df$Specie <- factor(df$Specie, levels=c('Human', 'Mouse', 'Fly'))
+ggplot(df,aes(x = Type, y = Value, fill=Specie)) + geom_boxplot() + theme_bw() + xlab("Collection") + ylab('# motifs') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + ylim(c(0,15))
+dev.off()
+```
+
+# How many TFs per motif/cluster
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_tfs <- vector()
+mouse_tfs <- vector()
+fly_tfs <- vector()
+for (i in 1:nrow(human)){
+  human_tfs <- c(human_tfs, length(unique(c(unlist(strsplit(unique(human[i,'Direct_annot']), split = ","))), unlist(strsplit(unique(human[i,'Orthology_annot']), split = ",")))))
+}
+
+for (i in 1:nrow(mouse)){
+  mouse_tfs <- c(mouse_tfs, length(unique(c(unlist(strsplit(unique(mouse[i,'Direct_annot']), split = ","))), unlist(strsplit(unique(mouse[i,'Orthology_annot']), split = ",")))))
+}
+
+for (i in 1:nrow(fly)){
+  fly_tfs <- c(fly_tfs, length(unique(c(unlist(strsplit(unique(fly[i,'Direct_annot']), split = ","))), unlist(strsplit(unique(fly[i,'Orthology_annot']), split = ",")))))
+}
+
+df <- data.frame()
+x <- cbind(human_tfs, rep('Human', length(human_tfs)), rep('Unclustered', length(human_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(mouse_tfs, rep('Mouse', length(mouse_tfs)), rep('Unclustered', length(mouse_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(fly_tfs, rep('Fly', length(fly_tfs)), rep('Unclustered', length(fly_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+```
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_clust_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_tfs <- vector()
+mouse_tfs <- vector()
+fly_tfs <- vector()
+
+for (i in 1:nrow(human)){
+  human_tfs <- c(human_tfs, length(unique(c(unlist(strsplit(unique(human[i,'Direct_annot']), split = ","))), unlist(strsplit(unique(human[i,'Orthology_annot']), split = ",")))))
+}
+
+for (i in 1:nrow(mouse)){
+  mouse_tfs <- c(mouse_tfs, length(unique(c(unlist(strsplit(unique(mouse[i,'Direct_annot']), split = ","))), unlist(strsplit(unique(mouse[i,'Orthology_annot']), split = ",")))))
+}
+
+for (i in 1:nrow(fly)){
+  fly_tfs <- c(fly_tfs, length(unique(c(unlist(strsplit(unique(fly[i,'Direct_annot']), split = ","))), unlist(strsplit(unique(fly[i,'Orthology_annot']), split = ",")))))
+}
+
+x <- cbind(human_tfs, rep('Human', length(human_tfs)), rep('Clustered', length(human_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(mouse_tfs, rep('Mouse', length(mouse_tfs)), rep('Clustered', length(mouse_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+x <- cbind(fly_tfs, rep('Fly', length(fly_tfs)), rep('Clustered', length(fly_tfs)))
+colnames(x) <- c('Value', 'Specie', 'Type')
+df <- rbind(df, x)
+```
+
+```{r}
+df[,1] <- as.numeric(df[,1])
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Number_of_tfs_per_motif_per_species_clust_vs_unclust.pdf')
+df$Specie <- factor(df$Specie, levels=c('Human', 'Mouse', 'Fly'))
+ggplot(df,aes(x = Type, y = Value, fill=Specie)) + geom_boxplot() + theme_bw() + xlab("Collection") + ylab('# TFs per motif') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + ylim(c(0,10))
+dev.off()
+```
+
+# Correlation metacluster versus archetype
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+metacluster_fname <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/hg38_SCREEN_cluster_db/cluster_SCREEN.regions_vs_motifs.scores.feather'
+archetype_fname <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/hg38_SCREEN_cluster_db_archetype/cluster_SCREEN_archetype.regions_vs_motifs.scores.feather'
+```
+
+```{r}
+metacluster_db <- arrow::read_feather(metacluster_fname, col_select = c('motifs', starts_with("chr21")))
+archetype_db <- arrow::read_feather(archetype_fname, col_select = c('motifs', starts_with("chr21")))
+```
+
+```{r}
+metacluster_db <- as.data.frame(metacluster_db[grep('metacluster',metacluster_db$motifs),])
+rownames(metacluster_db) <- as.vector(unlist(metacluster_db$motifs))
+metacluster_db[1:5,1:5]
+archetype_db <- as.data.frame(archetype_db[grep('metacluster',archetype_db$motifs),])
+rownames(archetype_db) <- as.vector(unlist(archetype_db$motifs))
+archetype_db[1:5,1:5]
+metacluster_db <- metacluster_db[rownames(archetype_db),]
+metacluster_db <- metacluster_db[,2:ncol(metacluster_db)]
+archetype_db <- archetype_db[,2:ncol(archetype_db)]
+```
+
+```{r}
+x <- table(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)
+x <- paste0('metacluster_', names(x[x>5]))
+length(x)
+y <- colnames(metacluster_db)[sample(1000)]
+length(y)
+```
+
+```{r}
+x <- x[which(x %in% rownames(archetype_db))]
+metacluster_db <- metacluster_db[x,y]
+archetype_db <- archetype_db[x,y]
+```
+
+```{r}
+correlation_vector <- vector()
+for (i in 1:nrow(archetype_db)){
+  print(i)
+  correlation_vector <- c(correlation_vector, cor(t(archetype_db[i,]), t(metacluster_db[i,])))
+}
+names(correlation_vector) <- rownames(archetype_db) 
+saveRDS(correlation_vector, file='/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/correlation_vector_archetype_versus_premium.RDS')
+```
+
+```{r}
+table(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters[grep('^4\\.', motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)])
+```
+
+```{r}
+dt <- as.data.frame(correlation_vector)
+colnames(dt) <- 'Correlation'
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Archetype_VS_cluster.pdf')
+ggplot(dt,aes(x = Correlation)) + geom_histogram(aes(y=..density..), fill="#f8766d", color='black', binwidth=0.02) + theme_bw() + geom_density(alpha=.5, fill="#FF6666") + ylab('Density') + xlab('Correlation archetype VS cluster')
+dev.off()
+```
+
+```{r}
+correlation_vector[grep('metacluster_4.', names(correlation_vector), fixed=T)]
+```
+
+```{r}
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Archetype_VS_cluster_ex1_41.pdf')
+x <- archetype_db['metacluster_4.1',]
+y <- metacluster_db['metacluster_4.1',]
+dt <- as.data.frame(cbind(t(x), t(y)))
+colnames(dt) <- c('x', 'y')
+ggplot(dt, aes(x=x, y=y)) + 
+  geom_point()+
+  geom_smooth(method=lm) + theme_bw() + ylab('Cluster score') + xlab('Archetype score')
+dev.off()
+
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Archetype_VS_cluster_ex1_43.pdf')
+x <- archetype_db['metacluster_4.3',]
+y <- metacluster_db['metacluster_4.3',]
+dt <- as.data.frame(cbind(t(x), t(y)))
+colnames(dt) <- c('x', 'y')
+ggplot(dt, aes(x=x, y=y)) + 
+  geom_point()+
+  geom_smooth(method=lm) + theme_bw() + ylab('Cluster score') + xlab('Archetype score')
+dev.off()
+```
+
+# Correlation premium versus public
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+metacluster_fname <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/hg38_SCREEN_cluster_db/cluster_SCREEN.regions_vs_motifs.scores.feather'
+public_fname <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/hg38_SCREEN_cluster_db_public/cluster_SCREEN_public.regions_vs_motifs.scores.feather'
+```
+
+```{r}
+metacluster_db <- arrow::read_feather(metacluster_fname, col_select = c('motifs', starts_with("chr21")))
+public_db <- arrow::read_feather(public_fname, col_select = c('motifs', starts_with("chr21")))
+```
+
+```{r}
+metacluster_db <- as.data.frame(metacluster_db[grep('metacluster',metacluster_db$motifs),])
+rownames(metacluster_db) <- as.vector(unlist(metacluster_db$motifs))
+metacluster_db[1:5,1:5]
+public_db <- as.data.frame(public_db[grep('metacluster',public_db$motifs),])
+rownames(public_db) <- as.vector(unlist(public_db$motifs))
+public_db[1:5,1:5]
+metacluster_db <- metacluster_db[rownames(public_db),]
+metacluster_db <- metacluster_db[,2:ncol(metacluster_db)]
+public_db <- public_db[,2:ncol(public_db)]
+```
+
+```{r}
+x <- table(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)
+x <- paste0('metacluster_', names(x[x>5]))
+length(x)
+y <- colnames(metacluster_db)[sample(1000)]
+length(y)
+```
+
+```{r}
+x <- x[which(x %in% rownames(public_db))]
+metacluster_db <- metacluster_db[x,y]
+public_db <- public_db[x,y]
+```
+
+```{r}
+correlation_vector <- vector()
+for (i in 1:nrow(public_db)){
+  print(i)
+  correlation_vector <- c(correlation_vector, cor(t(public_db[i,]), t(metacluster_db[i,])))
+}
+names(correlation_vector) <- rownames(public_db) 
+saveRDS(correlation_vector, file='/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/correlation_vector_public_versus_premium.RDS')
+```
+
+```{r}
+table(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters[grep('^4\\.', motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)])
+```
+
+```{r}
+dt <- as.data.frame(correlation_vector)
+colnames(dt) <- 'Correlation'
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/public_VS_cluster.pdf')
+ggplot(dt,aes(x = Correlation)) + geom_histogram(aes(y=..density..), fill="#f8766d", color='black', binwidth=0.02) + theme_bw() + geom_density(alpha=.5, fill="#FF6666") + ylab('Density') + xlab('Correlation public VS cluster')
+dev.off()
+```
+
+```{r}
+correlation_vector[grep('metacluster_4.', names(correlation_vector), fixed=T)]
+```
+
+```{r}
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/public_VS_cluster_ex1_41.pdf')
+x <- public_db['metacluster_4.1',]
+y <- metacluster_db['metacluster_4.1',]
+dt <- as.data.frame(cbind(t(x), t(y)))
+colnames(dt) <- c('x', 'y')
+ggplot(dt, aes(x=x, y=y)) + 
+  geom_point()+
+  geom_smooth(method=lm) + theme_bw() + ylab('Cluster score') + xlab('public score')
+dev.off()
+
+pdf('/lustre1/project/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/public_VS_cluster_ex1_43.pdf')
+x <- public_db['metacluster_4.3',]
+y <- metacluster_db['metacluster_4.3',]
+dt <- as.data.frame(cbind(t(x), t(y)))
+colnames(dt) <- c('x', 'y')
+ggplot(dt, aes(x=x, y=y)) + 
+  geom_point()+
+  geom_smooth(method=lm) + theme_bw() + ylab('Cluster score') + xlab('public score')
+dev.off()
+```
+
+# Coverage comparison
+
+Get coverage
+
+```{r}
+# Read summits
+library(GenomicRanges)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/'
+paths_list <- list()
+paths_list[['ctx_unclustered']] <- paste0(path, 'cisTarget_v10_unclustered/')
+paths_list[['ctx_clustered']] <- paste0(path, 'cisTarget_v10_clustered/')
+paths_list[['ctx_archetype']] <- paste0(path, 'cisTarget_v10_archetype/')
+paths_list[['ctx_public']] <- paste0(path, 'cisTarget_v10_public/')
+paths_list[['dem_unclustered']] <- paste0(path, 'DEM_v10_unclustered/')
+paths_list[['dem_clustered']] <- paste0(path, 'DEM_v10_clustered/')
+paths_list[['dem_archetype']] <- paste0(path, 'DEM_v10_archetype/')
+paths_list[['dem_public']] <- paste0(path, 'DEM_v10_public/')
+paths_list[['Homer']] <- paste0(path, 'Homer/')
+file_names <- unique(c(list.files(paste0(path, 'cisTarget_v10_clustered/cistromes_summits/')), list.files(paste0(path, 'cisTarget_v10_unclustered/cistromes_summits/')), list.files(paste0(path, 'cisTarget_v10_archetype/cistromes_summits/')), list.files(paste0(path, 'cisTarget_v10_public/cistromes_summits/')),  list.files(paste0(path, 'DEM_v10_clustered/cistromes_summits/')), list.files(paste0(path, 'DEM_v10_unclustered/cistromes_summits/')), list.files(paste0(path, 'DEM_v10_archetype/cistromes_summits/')), list.files(paste0(path, 'DEM_v10_public/cistromes_summits/')),  list.files(paste0(path, 'Homer/cistromes_summits/'))))
+granges_list <- list()
+extend <- 250
+library(genomation)
+for (file in file_names){
+  x <- gsub('.bed', '', file)
+  granges_list[[x]] <- list()
+  for (name in names(paths_list)){
+    if (file.exists(paste0(paths_list[[name]], 'cistromes_summits/', file))){
+        granges_list[[x]][[name]] <- readBed(paste0(paths_list[[name]], 'cistromes_summits/', file))
+        granges_list[[x]][[name]] <- flank(granges_list[[x]][[name]], width=extend, both=TRUE)
+    }
+  }
+}
+
+saveRDS(granges_list, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/coverage_V2/cistrome_list.RDS')
+```
+
+
+```{r}
+# Get coverage matrix
+library(rtracklayer)
+library(data.table)
+granges_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/coverage_V2/cistrome_list.RDS')
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/bigwig/'
+files <- paste0(path, list.files(path)[grep('bigWig', list.files(path))])
+bw <- BigWigFileList(files)
+coverage_list <- list()
+
+for(i in seq_len(length(bw))) {
+  print(i)
+  file_name <- bw[[i]]@resource
+  bw_name <- strsplit(gsub(path, '', file_name), '.bigWig')[[1]][1]
+  label <- strsplit(gsub(path, '', file_name), '_ENCFF')[[1]][1]
+  cistrome_names <- names(granges_list)[grep(label, names(granges_list))]
+  for (cistrome_name in cistrome_names){
+    track_name <- paste0(cistrome_name, '__', bw_name)
+    print(track_name)
+    cistromes <- granges_list[[cistrome_name]]
+    matrix_list <- list()
+    for (j in 1:length(cistromes)){
+      print(names(cistromes)[[j]])
+      granges <- cistromes[[j]]
+      coverage <- t(sapply(import.bw(bw[[i]], which=granges, as='NumericList'), cbind))
+      mcoverage <- colMeans(coverage)
+      matrix_list[[j]] <- as.data.frame(t(as.data.frame(mcoverage)))
+    }
+    x <- as.matrix(rbindlist(matrix_list))
+    rownames(x) <- names(cistromes)
+    coverage_list[[track_name]] <- x
+  }
+}
+
+# Remember to create the directory if it doesn't exist
+saveRDS(coverage_list, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/coverage_V2/coverage_list.Rds'))
+```
+
+```{r}
+coverage_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/coverage/coverage_list.Rds')
+x <- unique(sapply(strsplit(names(coverage_list), split = "__"), "[", 1))
+x <- gsub('_extended', '', x)
+```
+
+# Unibind
+
+```{r}
+consensus_peaks <- as.vector(unlist(read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SCREEN_regions.tsv')[,1]))
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_SCREEN/'
+files <- list.files(path)
+unibind_list <- list()
+for (file in files){
+  df <- read.delim(paste0(path, file), header=FALSE)
+  TF <- strsplit(file, split = "\\.")[[1]][3]
+  regions <- paste0(df[,1], ':', df[,2], '-', df[,3])
+  if (TF %in% names(unibind_list)){
+    unibind_list[[TF]] <- unique(c(unibind_list[[TF]], regions))
+  } else {
+    unibind_list[[TF]]  <- unique(regions)
+  }
+}
+saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/unibind_list_SCREEN.RDS')
+```
+
+```{r}
+# Read summits
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/'
+paths_list <- list()
+paths_list[['ctx_unclustered']] <- paste0(path, 'cisTarget_v10_unclustered/')
+paths_list[['ctx_clustered']] <- paste0(path, 'cisTarget_v10_clustered/')
+paths_list[['ctx_archetype']] <- paste0(path, 'cisTarget_v10_archetype/')
+paths_list[['ctx_public']] <- paste0(path, 'cisTarget_v10_public/')
+paths_list[['dem_unclustered']] <- paste0(path, 'DEM_v10_unclustered/')
+paths_list[['dem_clustered']] <- paste0(path, 'DEM_v10_clustered/')
+paths_list[['dem_archetype']] <- paste0(path, 'DEM_v10_archetype/')
+paths_list[['dem_public']] <- paste0(path, 'DEM_v10_public/')
+paths_list[['Homer']] <- paste0(path, 'Homer/')
+regulon_list <- list()
+for (method in names(paths_list)){
+  print(method)
+  p <- paths_list[[method]]
+  f <- list.files(paste0(p, 'cistromes_hits_SCREEN'))
+  regulon_list[[method]] <- list()
+  for (file in f){
+    x <- as.vector(unlist(read.delim(paste0(p, 'cistromes_hits_SCREEN/', file))[,1]))
+    tf <- strsplit(file, '_')[[1]][2]
+    if (tf %in% names(regulon_list[[method]])){
+      regulon_list[[method]][[tf]] <- unique(c(regulon_list[[method]][[tf]], x))
+    } else {
+      regulon_list[[method]][[tf]] <- x
+    }
+  }
+  regulon_list[[method]] <- regulon_list[[method]][which(lengths(regulon_list[[method]]) > 100)]
+}
+
+saveRDS(regulon_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/regulon_list.RDS')
+```
+
+```{r}
+unibind_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/unibind_list_SCREEN.RDS')
+regulon_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/regulon_list.RDS')
+library(caret)
+metrics_list <- list()
+for (method in names(regulon_list)[grep('Homer', names(regulon_list))]){
+  eregulons_list <- regulon_list[[method]]
+  unibind_list_x <- unibind_list[which(names(unibind_list) %in% names(eregulons_list))]
+  eregulons_list <- eregulons_list[which(names(eregulons_list) %in% names(unibind_list_x))]
+  eregulons_list <- eregulons_list[names(unibind_list_x)]
+  print(method)
+  print(length(eregulons_list))
+  prec_list <- list()
+  recall_list <- list()
+  F1_list <- list()
+  for (TF in names(unibind_list_x)){
+    print(TF)
+    true_pos <- rep(0, length(consensus_peaks))
+    true_pos[which(consensus_peaks %in% unibind_list_x[[TF]])] <- 1
+    true_pos <- as.factor(true_pos)
+    prec_vector <- vector()
+    recall_vector <- vector()
+    F1_vector <- vector()
+    for (TF_2 in names(eregulons_list)){
+      pred_pos <- rep(0, length(consensus_peaks))
+      pred_pos[which(consensus_peaks %in% eregulons_list[[TF_2]])] <- 1
+      #print(pred_pos)
+      pred_pos <- as.factor(pred_pos)
+      precision <- posPredValue(pred_pos, true_pos, positive="1")
+      recall <- sensitivity(pred_pos, true_pos, positive="1")
+      F1 <- (2 * precision * recall) / (precision + recall)
+      prec_vector <- c(prec_vector, precision)
+      recall_vector <- c(recall_vector, recall)
+      F1_vector <- c(F1_vector, F1)
+    }
+    prec_list[[TF]] <-prec_vector
+    recall_list[[TF]] <- recall_vector
+    F1_list[[TF]] <- F1_vector
+  }
+  metrics_list[[method]] <- list()
+  metrics_list[[method]][['Precision']] <- prec_list
+  metrics_list[[method]][['Recall']] <- recall_list
+  metrics_list[[method]][['F1']] <- F1_list
+  saveRDS(metrics_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/metrics_list_homer.RDS')
+}
+```
+
+```{r}
+ctx_metrics <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/metrics_list_ctx.RDS')
+dem_metrics <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/metrics_list_dem.RDS')
+homer_metrics <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/metrics_list_homer.RDS')
+metrics_list <- c(ctx_metrics, dem_metrics, homer_metrics)
+names(metrics_list) <- c( "cisTarget (unclustered)", "cisTarget (clustered)", "cisTarget (archetype)", "cisTarget (public)", "DEM (unclustered)", "DEM (clustered)", 'DEM (archetype)', 'DEM (public)', 'Homer')
+
+```
+
+```{r}
+precision_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['Precision']]))
+  precision_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(precision_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(precision_list[[name]])) > 0){
+  precision_list[[name]] <- precision_list[[name]][-which(is.na(precision_list[[name]]))]
+  }
+}
+
+recall_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['Recall']]))
+  recall_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(recall_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(recall_list[[name]])) > 0){
+    recall_list[[name]] <- recall_list[[name]][-which(is.na(recall_list[[name]]))]
+  }
+}
+
+F1_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['F1']]))
+  F1_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(F1_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(F1_list[[name]])) > 0){
+    F1_list[[name]] <- F1_list[[name]][-which(is.na(F1_list[[name]]))]
+  }
+}
+```
+
+```{r}
+library(RColorBrewer)
+c1 <- brewer.pal(5, 'Reds')[2:6]
+c2 <- brewer.pal(5, 'Blues')[2:6]
+c3 <- brewer.pal(3, 'Greens')[2:3]
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("Homer"= 'forestgreen', "cisTarget (unclustered)"=c1[1], "cisTarget (archetype)"=c1[2], "cisTarget (clustered)"=c1[3],"cisTarget (public)"=c1[4],  "DEM (unclustered)"=c2[1], 'DEM (archetype)'=c2[2], "DEM (clustered)"=c2[3], 'DEM (public)'= c2[4])
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+d <- data.frame(x = unlist(F1_list), 
+                  grp = rep(names(F1_list)[1:length(F1_list)],times = sapply(F1_list,length)))
+d <- d[complete.cases(d),]
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/TF_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+
+d <- data.frame(x = unlist(precision_list), 
+                  grp = rep(names(precision_list)[1:length(precision_list)],times = sapply(precision_list,length)))
+d <- d[complete.cases(d),]
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/Precision_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+
+d <- data.frame(x = unlist(recall_list), 
+                  grp = rep(names(recall_list)[1:length(recall_list)],times = sapply(recall_list,length)))
+d <- d[complete.cases(d),]
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Unibind_benchmark/Recall_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale 
+```

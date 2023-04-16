@@ -1,0 +1,238 @@
+---
+title: "Motif enrichment dot plot"
+output: html_notebook
+---
+
+# Panel B
+
+## Calculate RSS
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/Mouse_cortex_gene_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+cell_data$Pseudobulk <- cell_data$GEX_conserved_cell_type
+#ell_data$Pseudobulk[grep('VEC', cell_data$Pseudobulk)] <- 'VEC'
+#cell_data$Pseudobulk[grep('Kupffer', cell_data$Pseudobulk)] <- 'Kupffer'
+#cell_data$Pseudobulk[grep('DC', cell_data$Pseudobulk)] <- 'DC'
+#cell_data$Pseudobulk[grep('Hep', cell_data$Pseudobulk)] <- 'Hepatocyte'
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values[,c('L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'AST', 'OPC', 'OL', 'ENDO')]
+rssPlot <- plotRSS(rss_values)
+plotly::ggplotly(rssPlot$plot)
+```
+
+```{r}
+for (name in colnames(rss_values)){
+  print(plotRSS_oneSet(rss_values, setName = name, n=30))
+}
+```
+
+
+# Some barplot for supplementary
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/Mouse_cortex_gene_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- AUCell::getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+```
+
+```{r}
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+out_extended <- vector()
+for (name in names(regulon_list)[grep('extended', names(regulon_list))]){
+  sub_name <- gsub('_extended', '', name)
+  if (sub_name %in% names(regulon_list))
+    out_extended <- c(out_extended , name)
+}
+out_extended <- c(out_extended, names(regulon_list)[grep('+_-', names(regulon_list), fixed=TRUE)], names(regulon_list)[grep('-_-', names(regulon_list), fixed=TRUE)])
+```
+
+```{r}
+regulon_list <- regulon_list[-which(names(regulon_list) %in% out_extended)]
+cells_AUC <- cells_AUC[-which(rownames(cells_AUC) %in% out_extended),]
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+rownames(cells_AUC) <- gsub('_extended', '', rownames(cells_AUC))
+
+names(regulon_list) <- gsub('_+_+', '_+', names(regulon_list), fixed=TRUE)
+names(regulon_list) <- gsub('_-_+', '_-', names(regulon_list), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_+_+', '_+', rownames(cells_AUC), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_-_+', '_-', rownames(cells_AUC), fixed=TRUE)
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/Mouse_cortex_region_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC_region <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cells_AUC_region <- cells_AUC_region[-which(rownames(cells_AUC_region) %in% out_extended),]
+rownames(cells_AUC_region) <- gsub('_extended', '', rownames(cells_AUC_region) )
+rownames(cells_AUC_region) <- gsub('_+_+', '_+', rownames(cells_AUC_region), fixed=TRUE)
+rownames(cells_AUC_region) <- gsub('_-_+', '_-', rownames(cells_AUC_region), fixed=TRUE)
+```
+
+```{r}
+cells_AUC <- cells_AUC[rownames(cells_AUC_region), which(colnames(cells_AUC) %in% colnames(cells_AUC_region))]
+cells_AUC_region <- cells_AUC_region[rownames(cells_AUC), colnames(cells_AUC)]
+correlations <- cor(t(cells_AUC), t(cells_AUC_region))
+corre <- diag(correlations)
+```
+
+- How many TFs are only positive, only negative or both?
+
+```{r}
+regulon_list <- regulon_list[names(corre[which(corre > 0.4)])]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+both <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+both <- both[duplicated(both)]
+correlations_both <- diag(correlations[paste0(both, '_-'), paste0(both, '_+')])
+names(correlations_both) <- both
+both <- names(correlations_both)[which(correlations_both < 0)]
+out <- paste0(names(correlations_both)[which(correlations_both > 0)], '_-')
+regulon_list <- regulon_list[-which(names(regulon_list) %in% out)]
+negative <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_-'))]
+negative <- negative[grep('_-', negative)]
+positive <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_+'))]
+positive <- positive[grep('_+', positive, fixed=TRUE)]
+```
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/Mouse_cortex_gene_based.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_cell_annotation(loom)
+cell_data$Pseudobulk <- cell_data$GEX_conserved_cell_type
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_glia <- rss_values[,c('AST', 'OPC', 'OL', 'ENDO')]
+```
+
+```{r}
+cell_data_2 <- cell_data[which(cell_data$Pseudobulk %in% c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')),]
+cells_AUC_2 <- cells_AUC[,rownames(cell_data_2)]
+rss_values <- calcRSS(cells_AUC_2, cell_data_2$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_neuron <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')]
+```
+
+```{r}
+rss_values <- cbind(rss_values_neuron, rss_values_glia)
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$Pseudobulk)])/sum(rowSums(dgem[,grep(x, cell_data$Pseudobulk)]))*10^6+1)))
+}
+library(data.table)
+exp_mat <- t(rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'AST', 'OPC', 'OL', 'ENDO')]
+```
+
+```{r}
+sel_rel <- c(positive, negative, paste0(both, '_+'), paste0(both, '_-'))
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+exp_mat <- t(scale(t(exp_mat)))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/HQ_regulons.RDS')
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    #scale_fill_viridis_c() +
+    scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/Regulon_dotplot_all_RSS_suppl_indep_norm_scale_mat_bwr.pdf', g, width=18, height=6)
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=rev(sel_rel))
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=colnames(rss_values))
+# Manual selection
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range =  c(0.1, 3), limits=c(0, 1)) +
+    #scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    scale_fill_gradient2(
+    low = "dodgerblue", 
+    mid = "white", 
+    high = "brown1", 
+    midpoint = 0
+  ) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + theme(axis.text.y = element_text(colour = rev(sel_rel_color)))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost/Regulon_dotplot_all_RSS_suppl_flipped_indep_norm_bwr.pdf', g, width=6, height=18)
+```
+```{r}
+selected_eregulons <- c('Satb1', # Pan
+                        'Dlx6_+', 'Dlx2_+', 'Dlx1_+', 'Esrrb_+', 'Lhx6_+', 'Arx_+', #Inter
+                        'Cux1_+', 'Cux2_+',  #L2/3
+                        )
+```

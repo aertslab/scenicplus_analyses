@@ -1,0 +1,524 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Read loom
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_mouse_cortex.HARMONY-1-1.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_clusterings_with_name(loom)[,6,drop=FALSE]
+colnames(cell_data) <- 'Leiden_res1'
+embeddings <- get_embeddings(loom)
+library(Seurat)
+seurat <- CreateSeuratObject(dgem)
+seurat <- AddMetaData(seurat, cell_data)
+umap <- embeddings[[1]]
+tsne <-  embeddings[[2]]
+colnames(umap) <- c('UMAP_1', 'UMAP_2')
+colnames(tsne) <- c('TSNE_1', 'tsne_2')
+seurat[["VSN_UMAP"]] <- CreateDimReducObject(embeddings = umap, key = "UMAP_", assay = DefaultAssay(seurat))
+seurat[["VSN_TSNE"]] <- CreateDimReducObject(embeddings = tsne, key = "TSNE_", assay = DefaultAssay(seurat))
+saveRDS(seurat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat.RDS')
+```
+
+```{r}
+seurat <- readRDS('/Users/u0117456/Downloads/MO_GEX_seurat.RDS')
+consensus_cell_type <- sapply(strsplit(as.vector(unlist(seurat@meta.data$Leiden_res1)), split = " \\("), "[", 1)
+names(consensus_cell_type) <- rownames(seurat@meta.data)
+```
+
+```{r}
+consensus_cell_type[which(consensus_cell_type == 'MSN')] <- 'D2MSN'
+library(gatepoints)
+rbPal <- colorRampPalette(c('grey', 'red'))
+color <- as.vector(seurat@assays$RNA@counts['Drd1',])
+names(color) <- rownames(seurat@meta.data)
+cell_names <- names(sort(color))
+col <- rbPal(10)[as.numeric(cut(color,breaks = 10))]
+names(col) <- rownames(seurat@meta.data)
+col <- col[cell_names]
+coord <-seurat@reductions$VSN_UMAP@cell.embeddings[cell_names,]
+plot(coord,pch=16, col=col, cex=0.5)
+set1 <- fhs(coord)
+consensus_cell_type[set1] <- 'D1MSN'
+
+library(gatepoints)
+rbPal <- colorRampPalette(c('grey', 'red'))
+color <- as.vector(seurat@assays$RNA@counts['Cdh10',])
+names(color) <- rownames(seurat@meta.data)
+cell_names <- names(sort(color))
+col <- rbPal(10)[as.numeric(cut(color,breaks = 10))]
+names(col) <- rownames(seurat@meta.data)
+col <- col[cell_names]
+coord <-seurat@reductions$VSN_UMAP@cell.embeddings[cell_names,]
+plot(coord,pch=16, col=col, cex=0.5)
+set2 <- fhs(coord)
+consensus_cell_type[set2] <- 'L6b'
+
+library(gatepoints)
+rbPal <- colorRampPalette(c('grey', 'red'))
+color <- as.vector(seurat@assays$RNA@counts['Lefty1',])
+names(color) <- rownames(seurat@meta.data)
+cell_names <- names(sort(color))
+col <- rbPal(10)[as.numeric(cut(color,breaks = 10))]
+names(col) <- rownames(seurat@meta.data)
+col <- col[cell_names]
+coord <-seurat@reductions$VSN_UMAP@cell.embeddings[cell_names,]
+plot(coord,pch=16, col=col, cex=0.5)
+set3 <- fhs(coord)
+consensus_cell_type[set3] <- 'CA1'
+
+library(gatepoints)
+rbPal <- colorRampPalette(c('grey', 'red'))
+color <- as.vector(seurat@assays$RNA@counts['Reln',])
+names(color) <- rownames(seurat@meta.data)
+cell_names <- names(sort(color))
+col <- rbPal(10)[as.numeric(cut(color,breaks = 10))]
+names(col) <- rownames(seurat@meta.data)
+col <- col[cell_names]
+coord <-seurat@reductions$VSN_UMAP@cell.embeddings[cell_names,]
+plot(coord,pch=16, col=col, cex=0.5)
+set4 <- fhs(coord)
+consensus_cell_type[set4] <- 'MGE_SNCG'
+
+library(gatepoints)
+rbPal <- colorRampPalette(c('grey', 'red'))
+color <- as.vector(seurat@assays$RNA@counts['Car3',])
+names(color) <- rownames(seurat@meta.data)
+cell_names <- names(sort(color))
+col <- rbPal(10)[as.numeric(cut(color,breaks = 10))]
+names(col) <- rownames(seurat@meta.data)
+col <- col[cell_names]
+coord <-seurat@reductions$VSN_UMAP@cell.embeddings[cell_names,]
+plot(coord,pch=16, col=col, cex=0.5)
+set5 <- fhs(coord)
+consensus_cell_type[set5] <- 'L6IT_Car3'
+
+consensus_cell_type[which(consensus_cell_type == 'L4/5IT')] <- 'L5IT'
+library(gatepoints)
+rbPal <- colorRampPalette(c('grey', 'red'))
+color <- as.vector(seurat@assays$RNA@counts['Rorb',])
+names(color) <- rownames(seurat@meta.data)
+cell_names <- names(sort(color))
+col <- rbPal(10)[as.numeric(cut(color,breaks = 10))]
+names(col) <- rownames(seurat@meta.data)
+col <- col[cell_names]
+coord <-seurat@reductions$VSN_UMAP@cell.embeddings[cell_names,]
+plot(coord,pch=16, col=col, cex=0.5)
+set6 <- fhs(coord)
+consensus_cell_type[set6] <- 'L4IT'
+
+consensus_cell_type[which(consensus_cell_type == 'CA+L5ET')] <- 'L5ET'
+consensus_cell_type[which(consensus_cell_type == 'L6CTb')] <- 'L6CT'
+consensus_cell_type[which(consensus_cell_type == 'RSP_L6')] <- 'RSP'
+consensus_cell_type[which(consensus_cell_type == 'L2/3IT Otof')] <- 'L2/3IT'
+```
+
+```{r}
+consensus_cell_type <- as.data.frame(consensus_cell_type)
+seurat <- AddMetaData(seurat, consensus_cell_type)
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='consensus_cell_type', reduction='VSN_UMAP') + NoLegend()
+saveRDS(seurat, file='/Users/u0117456/Downloads/MO_GEX_seurat.RDS')
+```
+
+```{r}
+seurat <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat.RDS')
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='consensus_cell_type', reduction='VSN_UMAP') + NoLegend()
+```
+
+```{r}
+table(seurat$consensus_cell_type)
+```
+```{r}
+conserved_cell_type <- unlist(as.vector(seurat$consensus_cell_type))
+conserved_cell_type[which(conserved_cell_type == 'CGE_LAMP5')] <- 'CGE LAMP5'
+conserved_cell_type[which(conserved_cell_type == 'CGE_VIP')] <- 'CGE VIP'
+conserved_cell_type[which(conserved_cell_type == 'L2/3IT')] <- 'L2/3 IT'
+conserved_cell_type[which(conserved_cell_type == 'L4IT')] <- 'L4 IT'
+conserved_cell_type[which(conserved_cell_type == 'L5ET')] <- 'L5 PT'
+conserved_cell_type[which(conserved_cell_type == 'L5IT')] <- 'L5 IT'
+conserved_cell_type[which(conserved_cell_type == 'L6CT')] <- 'L6 CT'
+conserved_cell_type[which(conserved_cell_type == 'L6IT')] <- 'L6 IT'
+conserved_cell_type[which(conserved_cell_type == 'L6IT_Car3')] <- 'L6 IT CAR3'
+conserved_cell_type[which(conserved_cell_type == 'MGE_PVALB')] <- 'MGE PVALB'
+conserved_cell_type[which(conserved_cell_type == 'MGE_SNCG')] <- 'MGE SNCG'
+conserved_cell_type[which(conserved_cell_type == 'MGE_SST')] <- 'MGE SST'
+conserved_cell_type[which(conserved_cell_type == 'PER')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'PVM')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'VEC')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'VLMC')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'ABC')] <- 'ENDO'
+seurat@meta.data$conserved_cell_type <- conserved_cell_type
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='conserved_cell_type', reduction='VSN_UMAP') + NoLegend()
+```
+
+```{r}
+location <- unlist(as.vector(seurat$conserved_cell_type))
+location[grep('IT',location)] <- 'Cortex'
+location[grep('PT',location)] <- 'Cortex'
+location[grep('CT',location)] <- 'Cortex'
+location[grep('MGE',location)] <- 'Cortex'
+location[grep('CGE',location)] <- 'Cortex'
+location[grep('L6b',location)] <- 'Cortex'
+location[grep('AST',location)] <- 'Cortex'
+location[grep('MGL',location)] <- 'Cortex'
+location[grep('OPC',location)] <- 'Cortex'
+location[grep('NP',location)] <- 'Cortex'
+location[grep('ENDO',location)] <- 'Cortex'
+location[grep('OL',location)] <- 'Cortex'
+location[grep('MGL',location)] <- 'Cortex'
+location[grep('MSN',location)] <- 'Striatum'
+location[grep('SZ',location)] <- 'Striatum'
+location[grep('CHOL',location)] <- 'Striatum'
+location[grep('CB',location)] <- 'Cerebellum'
+location[grep('BG',location)] <- 'Cerebellum'
+location[grep('MEINH',location)] <- 'Cerebellum'
+location[grep('DG',location)] <- 'Hippocampus'
+location[grep('CA',location)] <- 'Hippocampus'
+location[grep('DEGLU',location)] <- 'Thalamus'
+location[grep('OB',location)] <- 'Olfactory bulb'
+seurat@meta.data$location <- location
+DimPlot(seurat, label = TRUE, group.by='location', reduction='VSN_UMAP') + NoLegend()
+```
+
+```{r}
+seurat@meta.data$sample_id <- sapply(strsplit(rownames(seurat@meta.data), split = "___"), "[", 2)
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='sample_id', reduction='VSN_UMAP') + NoLegend()
+```
+
+```{r}
+m <- t(table(seurat$location, seurat$sample_id))
+sweep(m,2,colSums(m),`/`)*100
+```
+
+```{r}
+df <- seurat@meta.data[which(seurat@meta.data$sample_id == 'TEW__3cc0d9__bb22bc__Multiome_brain_TST_NP40_004'),]
+rownames(df) <- sapply(strsplit(unlist(rownames(df)), split = "___"), "[", 1)
+write.table(df, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/metadata_TEW__3cc0d9__bb22bc__Multiome_brain_TST_NP40_004.tsv', quote=FALSE, sep='\t')
+```
+
+```{r}
+# Normalize data
+seurat <- NormalizeData(object = seurat, normalization.method = "LogNormalize", scale.factor = 1e4)
+# Find variable features
+seurat <- FindVariableFeatures(object = seurat , selection.method = 'mean.var.plot', mean.cutoff = c(0.0125, 3), dispersion.cutoff = c(0.5, Inf))
+# Scale data
+seurat <- ScaleData(object = seurat, features = rownames(x = seurat))
+# Run PCA
+seurat <- RunPCA(object = seurat, features = VariableFeatures(object = seurat), verbose = FALSE, npcs=150)
+# Select number of PCs
+source("/staging/leuven/stg_00002/lcb/cbravo/Barrel_Cortex/Cortex_Linnarson/Seurat_aux/Seurat_Utils.R")
+data.use <- PrepDR(object = seurat, genes.use = VariableFeatures(object = seurat), use.imputed = F, assay.type = "RNA")
+nPC <- PCA_estimate_nPC(data.use, whereto="/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/nPC_selection.Rds", to.nPC = 150, k=3)
+# nPC <- 52
+# Generate t-SNE and Umap
+seurat <- RunTSNE(object = seurat, dims = 1:nPC)
+seurat <- RunUMAP(object = seurat, dims = 1:nPC)
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='conserved_cell_type', reduction='umap') + NoLegend()
+```
+```{r}
+seurat <- RunHarmony(seurat, 'sample_id') 
+seurat <- RunTSNE(object = seurat, dims = 1:nPC, reduction='harmony', reduction.name = "tsne_harmony")
+seurat <- RunUMAP(object = seurat, dims = 1:nPC, reduction='harmony', reduction.name = "umap_harmony")
+```
+```{r}
+DimPlot(seurat, label = TRUE, group.by='conserved_cell_type', reduction='umap_harmony') + NoLegend()
+```
+
+```{r}
+saveRDS(seurat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat.RDS')
+```
+
+# Markers
+
+```{r}
+seurat <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat.RDS')
+newident <- seurat@meta.data$consensus_cell_type
+names(newident) <- rownames(seurat@meta.data)
+Idents(object = seurat) <- newident
+annot <- cbind(1:length(levels(Idents(object = seurat))), levels(Idents(object = seurat)))
+colnames(annot) <- c('Cluster', 'Annot')   
+
+seurat.markers.wilcox <- FindAllMarkers(object = seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+seurat.markers.wilcox$p_val_adj <- round(seurat.markers.wilcox$p_val_adj, 5)
+seurat.markers.wilcox <- seurat.markers.wilcox[which(seurat.markers.wilcox$p_val_adj < 0.05),]
+saveRDS(seurat.markers.wilcox, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/all_seurat_Markers_adj_pval_05_asname.Rds')
+seurat.markers.wilcox <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/all_seurat_Markers_adj_pval_05_asname.Rds')
+seurat.markers.wilcox$cluster <- as.vector(unlist(as.integer(seurat.markers.wilcox$cluster)))
+saveRDS(seurat.markers.wilcox, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/all_seurat_Markers_adj_pval_05_asnumber.Rds')
+
+annot <- cbind(1:length(levels(Idents(object = seurat))), levels(Idents(object = seurat)))
+colnames(annot) <- c('Cluster', 'Annot')   
+```
+
+# Make loom
+
+```{r}
+seurat <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat.RDS')
+seurat$location[grep('CHOL',seurat$consensus_cell_type)] <- 'Striatum'
+seurat$location[grep('CBOL',seurat$consensus_cell_type)] <- 'Cerebellum'
+dgem <- seurat@assays$RNA@counts
+cell.info <- seurat@meta.data
+vsn_umap_name <- 'VSN UMAP'
+vsn_umap <- Embeddings(seurat, reduction='VSN_UMAP')
+vsn_tsne_name <- 'VSN TSNE'
+vsn_tsne <- Embeddings(seurat, reduction='VSN_TSNE')
+umap_hr_name <- 'Seurat Harmony UMAP'
+umap_hr<- Embeddings(seurat, reduction='umap_harmony')
+tsne_hr_name <- "Seurat Harmony tSNE"
+tsne_hr <- Embeddings(seurat, reduction='tsne_harmony')
+umap_name <- 'Seurat UMAP'
+umap <- Embeddings(seurat, reduction='umap')
+tsne_name <- "Seurat tSNE"
+tsne <- Embeddings(seurat, reduction='tsne')
+
+newident <- seurat@meta.data$consensus_cell_type
+names(newident) <- rownames(seurat@meta.data)
+Idents(object = seurat) <- newident
+annot_df <- cbind(1:length(levels(Idents(object = seurat))), levels(Idents(object = seurat)))
+colnames(annot_df) <- c('cluster_id', 'cluster_name')   
+
+### Create the minimal loom file
+library(SCopeLoomR)
+file.name <- "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat.loom"
+build_loom(
+  file.name=file.name,
+  dgem=dgem,
+  title="10X multiome - Cortex",
+  genome="Mouse", # Just for user information, not used internally
+  default.embedding=vsn_umap,
+  default.embedding.name=vsn_umap_name
+)
+
+loom <- open_loom(file.name, mode='r+')
+# Hierarchy
+add_hierarchy(loom = loom, hierarchy = create_hierarchy(level.1.name = "Mouse_cortex_TEW", level.2.name = "rna", level.3.name = "Seurat"))
+
+# Annotation
+for (var in colnames(cell.info)){
+  toadd <- as.vector(unlist(cell.info[,var]))
+  names(toadd) <- rownames(cell.info)
+  if(length(unique(toadd)) < 245){
+    if (class(toadd) %in% c('numeric', 'integer')){
+    # Add metric (numerical variable)
+    add_col_attr(loom=loom, key = var, value=toadd, as.metric = T)
+    } else {
+    # Add annotation (categorical variable)
+    add_col_attr(loom=loom, key = var, value=toadd, as.annotation=T)
+  }
+  }
+}
+
+# Add extra embeddings
+add_embedding(loom=loom, embedding=vsn_tsne, name=vsn_tsne_name)
+add_embedding(loom=loom, embedding=umap_hr, name=umap_hr_name)
+add_embedding(loom=loom, embedding=tsne_hr, name=tsne_hr_name)
+add_embedding(loom=loom, embedding=umap, name=umap_name)
+add_embedding(loom=loom, embedding=tsne, name=tsne_name)
+
+# Add Seurat
+seurat.markers.file.path.list <- list()
+rownames(annot_df) <- annot_df[,'cluster_name']
+annot_df[,1] <- as.numeric(annot_df[,1])
+annot_list <- setNames(annot_df[Idents(seurat), "cluster_name"], Cells(seurat))
+clusters <- setNames(annot_df[Idents(seurat), "cluster_id"], Cells(seurat))
+clusters <- as.numeric(clusters)
+names(clusters) <- Cells(seurat)
+cl_id <- add_annotated_clustering(loom = loom,
+        group = "Consensus_cell_type",
+        name = "Consensus_cell_type",
+        clusters = clusters,
+        annotation = annot_list,
+        is.default = T)
+
+seurat.markers.wilcox <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/all_seurat_Markers_adj_pval_05_asname.Rds')
+seurat.markers.wilcox$cluster <- as.numeric(annot_df[as.vector(unlist(seurat.markers.wilcox$cluster)), 'cluster_id']) 
+add_clustering_markers(loom = loom,
+        clustering.id = cl_id,
+        clustering.markers = split(seurat.markers.wilcox, seurat.markers.wilcox$cluster),
+        marker.metric.accessors = c("avg_log2FC", "p_val_adj"),
+        marker.metric.names = c("Avg. log2FC", "adjusted P-value"),
+        marker.metric.description = c("Average log fold change", "Adjusted p-value (BF)"))
+flush(loom)
+```
+
+```{r}
+    clustering.ids <- grep(
+      pattern = "res\\.",
+      x = colnames(x = seurat@meta.data)
+    )
+    clustering.prefix <- paste0(unique(x = stringr::str_split_fixed(string = colnames(x = seurat@meta.data)[clustering.ids], pattern = "res.", n = 2)[,1]), "res.")
+
+```
+
+
+## Subset
+
+```{r}
+# Normalize data
+seurat <- subset(x = seurat, subset = location == "Cortex")
+seurat <- subset(x = seurat, subset = consensus_cell_type != "CBOL")
+seurat <- subset(x = seurat, subset = consensus_cell_type != "CHOL")
+seurat <- NormalizeData(object = seurat, normalization.method = "LogNormalize", scale.factor = 1e4)
+# Find variable features
+seurat <- FindVariableFeatures(object = seurat , selection.method = 'mean.var.plot', mean.cutoff = c(0.0125, 3), dispersion.cutoff = c(0.5, Inf))
+# Scale data
+seurat <- ScaleData(object = seurat, features = rownames(x = seurat))
+# Run PCA
+seurat <- RunPCA(object = seurat, features = VariableFeatures(object = seurat), verbose = FALSE, npcs=150)
+# Select number of PCs
+source("/staging/leuven/stg_00002/lcb/cbravo/Barrel_Cortex/Cortex_Linnarson/Seurat_aux/Seurat_Utils.R")
+data.use <- PrepDR(object = seurat, genes.use = VariableFeatures(object = seurat), use.imputed = F, assay.type = "RNA")
+nPC <- PCA_estimate_nPC(data.use, whereto="/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/nPC_selection_cortex.Rds", to.nPC = 150, k=3)
+# nPC <- 52
+# Generate t-SNE and Umap
+seurat <- RunTSNE(object = seurat, dims = 1:nPC)
+seurat <- RunUMAP(object = seurat, dims = 1:nPC)
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='conserved_cell_type', reduction='umap') + NoLegend()
+```
+```{r}
+seurat <- RunHarmony(seurat, 'sample_id') 
+seurat <- RunTSNE(object = seurat, dims = 1:nPC, reduction='harmony', reduction.name = "tsne_harmony")
+seurat <- RunUMAP(object = seurat, dims = 1:nPC, reduction='harmony', reduction.name = "umap_harmony")
+```
+
+```{r}
+DimPlot(seurat, label = TRUE, group.by='conserved_cell_type', reduction='umap_harmony') + NoLegend()
+```
+
+```{r}
+saveRDS(seurat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat_cortex_only.RDS')
+```
+
+# Markers
+
+```{r}
+library(Seurat)
+seurat <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat_cortex_only.RDS')
+newident <- seurat@meta.data$consensus_cell_type
+names(newident) <- rownames(seurat@meta.data)
+Idents(object = seurat) <- newident
+annot <- cbind(1:length(levels(Idents(object = seurat))), levels(Idents(object = seurat)))
+colnames(annot) <- c('Cluster', 'Annot')   
+
+seurat.markers.wilcox <- FindAllMarkers(object = seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+seurat.markers.wilcox$p_val_adj <- round(seurat.markers.wilcox$p_val_adj, 5)
+seurat.markers.wilcox <- seurat.markers.wilcox[which(seurat.markers.wilcox$p_val_adj < 0.05),]
+saveRDS(seurat.markers.wilcox, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/cortex_seurat_Markers_adj_pval_05_asname.Rds')
+seurat.markers.wilcox$cluster <- as.vector(unlist(as.integer(seurat.markers.wilcox$cluster)))
+saveRDS(seurat.markers.wilcox, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/cortex_seurat_Markers_adj_pval_05_asnumber.Rds')
+
+annot <- cbind(1:length(levels(Idents(object = seurat))), levels(Idents(object = seurat)))
+colnames(annot) <- c('Cluster', 'Annot')   
+```
+
+# Make loom
+
+```{r}
+seurat <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat_cortex_only.RDS')
+dgem <- seurat@assays$RNA@counts
+cell.info <- seurat@meta.data
+vsn_umap_name <- 'VSN UMAP'
+vsn_umap <- Embeddings(seurat, reduction='VSN_UMAP')
+vsn_tsne_name <- 'VSN TSNE'
+vsn_tsne <- Embeddings(seurat, reduction='VSN_TSNE')
+umap_hr_name <- 'Seurat Harmony UMAP'
+umap_hr<- Embeddings(seurat, reduction='umap_harmony')
+tsne_hr_name <- "Seurat Harmony tSNE"
+tsne_hr <- Embeddings(seurat, reduction='tsne_harmony')
+umap_name <- 'Seurat UMAP'
+umap <- Embeddings(seurat, reduction='umap')
+tsne_name <- "Seurat tSNE"
+tsne <- Embeddings(seurat, reduction='tsne')
+
+newident <- seurat@meta.data$consensus_cell_type
+names(newident) <- rownames(seurat@meta.data)
+Idents(object = seurat) <- newident
+annot_df <- cbind(1:length(levels(Idents(object = seurat))), levels(Idents(object = seurat)))
+colnames(annot_df) <- c('cluster_id', 'cluster_name')   
+
+### Create the minimal loom file
+library(SCopeLoomR)
+file.name <- "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat_Cortex.loom"
+build_loom(
+  file.name=file.name,
+  dgem=dgem,
+  title="10X multiome - Cortex",
+  genome="Mouse", # Just for user information, not used internally
+  default.embedding=vsn_umap,
+  default.embedding.name=vsn_umap_name
+)
+
+loom <- open_loom(file.name, mode='r+')
+# Hierarchy
+add_hierarchy(loom = loom, hierarchy = create_hierarchy(level.1.name = "Mouse_cortex_TEW", level.2.name = "rna", level.3.name = "Seurat"))
+
+# Annotation
+for (var in colnames(cell.info)){
+  toadd <- as.vector(unlist(cell.info[,var]))
+  names(toadd) <- rownames(cell.info)
+  if(length(unique(toadd)) < 245){
+    if (class(toadd) %in% c('numeric', 'integer')){
+    # Add metric (numerical variable)
+    add_col_attr(loom=loom, key = var, value=toadd, as.metric = T)
+    } else {
+    # Add annotation (categorical variable)
+    add_col_attr(loom=loom, key = var, value=toadd, as.annotation=T)
+  }
+  }
+}
+
+# Add extra embeddings
+add_embedding(loom=loom, embedding=vsn_tsne, name=vsn_tsne_name)
+add_embedding(loom=loom, embedding=umap_hr, name=umap_hr_name)
+add_embedding(loom=loom, embedding=tsne_hr, name=tsne_hr_name)
+add_embedding(loom=loom, embedding=umap, name=umap_name)
+add_embedding(loom=loom, embedding=tsne, name=tsne_name)
+
+# Add Seurat
+seurat.markers.file.path.list <- list()
+rownames(annot_df) <- annot_df[,'cluster_name']
+annot_df[,1] <- as.numeric(annot_df[,1])
+annot_list <- setNames(annot_df[Idents(seurat), "cluster_name"], Cells(seurat))
+clusters <- setNames(annot_df[Idents(seurat), "cluster_id"], Cells(seurat))
+clusters <- as.numeric(clusters)
+names(clusters) <- Cells(seurat)
+cl_id <- add_annotated_clustering(loom = loom,
+        group = "Consensus_cell_type",
+        name = "Consensus_cell_type",
+        clusters = clusters,
+        annotation = annot_list,
+        is.default = T)
+
+seurat.markers.wilcox <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/cortex_seurat_Markers_adj_pval_05_asname.Rds')
+seurat.markers.wilcox$cluster <- as.numeric(annot_df[as.vector(unlist(seurat.markers.wilcox$cluster)), 'cluster_id']) 
+add_clustering_markers(loom = loom,
+        clustering.id = cl_id,
+        clustering.markers = split(seurat.markers.wilcox, seurat.markers.wilcox$cluster),
+        marker.metric.accessors = c("avg_log2FC", "p_val_adj"),
+        marker.metric.names = c("Avg. log2FC", "adjusted P-value"),
+        marker.metric.description = c("Average log fold change", "Adjusted p-value (BF)"))
+flush(loom)
+```

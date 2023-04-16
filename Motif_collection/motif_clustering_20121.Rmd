@@ -1,0 +1,2413 @@
+---
+title: "Motif clustering"
+output: html_notebook
+---
+
+# 0.Load matrix
+
+```{r}
+library(arrow)
+motif_df <- arrow::read_feather('/staging/leuven/stg_00002/lcb/ghuls/tmp/tomtom_v10_2022/tomtom_mcv10.no_known_dimers.feather')
+dim(motif_df)
+```
+
+```{r}
+head(motif_df)
+```
+
+Convert to matrix
+
+```{r}
+motif_matrix <- as.matrix(motif_df[,2:ncol(motif_df)])
+```
+
+```{r}
+rownames(motif_matrix) <- colnames(motif_matrix)
+```
+
+```{r}
+min(motif_matrix)
+```
+
+```{r}
+a <- as.vector(motif_matrix)
+min(a[a!=min(a)])
+# 10^-43
+```
+
+```{r}
+max(motif_matrix)
+```
+
+Convert to log. Use pseudocount value smaller than the second smallest value
+
+```{r}
+log_mat <- -log10(motif_matrix+10^-45)
+```
+
+Create Seurat object
+
+```{r}
+motif_metadata <- read.table('/staging/leuven/stg_00002/lcb/ghuls/tmp/tomtom_v10_2022/best_motifs_annotation_after_tomtom.tsv', sep='\t')
+rownames(motif_metadata) <- motif_metadata[,4]
+motif_metadata <- motif_metadata[-1,]
+colnames(motif_metadata) <- c('Collection', 'Version', 'Motif_name', 'Motif_name_2', 'TF', 'IC', 'Length', 'Avg_row_sum', 'Hd5_hash', 'Motif_collection_priority', 'PFM_or_PPM', 'Motif_id_priority', 'Num_similar_motifs', 'Similar_motifs', 'is_known_tfdimer_or_taipale_dimer')
+for (collection in unique(motif_metadata$Collection)){
+  motif_metadata[,collection] <- rep(0, nrow(motif_metadata))
+  motif_metadata[grep(paste0(collection, '__'), motif_metadata[,'Similar_motifs']), collection] <- 1
+  motif_metadata[grep(paste0(collection, '__'), motif_metadata[,'Motif_name']), collection] <- 1
+}
+keep <- rownames(motif_metadata)[which(as.numeric(motif_metadata$IC) > 5)]
+keep <- keep[which(keep %in% rownames(log_mat))]
+```
+
+```{r}
+# Remove desso and factorbook
+keep <- keep[-grep('factorbook', keep)]
+keep <- keep[-grep('desso', keep)]
+```
+
+Run Seurat
+
+```{r}
+library(Seurat)
+log_mat_subset <- log_mat[keep, keep]
+keep <- which(rowSums(log_mat_subset > 5) > 1)
+out <- rownames(log_mat_subset)[which(rowSums(log_mat_subset > 5) <= 1)]
+out <- paste0(out, '.cb')
+write.table(out, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/singlets.txt', quote=FALSE, row.names = FALSE, col.names = FALSE)
+dimers <-  rownames(motif_metadata)[which(as.numeric(motif_metadata$is_known_tfdimer_or_taipale_dimer) == 1)]
+write.table(dimers, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/dimers.txt', quote=FALSE, row.names = FALSE, col.names = FALSE)
+log_mat_subset <- log_mat_subset[keep,keep]
+motif_obj <- CreateSeuratObject(counts = log_mat_subset, min.cells = 0, min.features = 0)
+motif_obj
+```
+
+Add metadata
+
+```{r}
+motif_obj <- AddMetaData(motif_obj, motif_metadata)
+```
+
+```{r}
+motif_obj@meta.data$IC[which(motif_obj@meta.data$IC > 20)] <- 20
+```
+
+Run Seurat
+
+```{r}
+motif_obj <- NormalizeData(motif_obj, normalization.method = "LogNormalize", scale.factor = 10000)
+motif_obj <- FindVariableFeatures(motif_obj, selection.method = "vst")
+all.genes <- rownames(motif_obj)
+motif_obj <- ScaleData(motif_obj, features = all.genes)
+motif_obj  <- RunPCA(object = motif_obj, verbose = FALSE, npcs=300, features = all.genes)
+```
+
+```{r}
+saveRDS(motif_obj, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+library(Seurat)
+ElbowPlot(motif_obj, ndims=300)
+```
+
+```{r}
+# Find clusters
+nPC <- 100
+motif_obj <- FindNeighbors(object = motif_obj, dims = 1:nPC, k.param=20)
+motif_obj <- FindClusters(object = motif_obj, resolution = 5)
+motif_obj <- FindClusters(object = motif_obj, resolution = 10)
+motif_obj <- FindClusters(object = motif_obj, resolution = 25)
+motif_obj <- FindClusters(object = motif_obj, resolution = 50)
+motif_obj <- FindClusters(object = motif_obj, resolution = 100)
+```
+
+```{r}
+# Generate t-SNE and Umap
+motif_obj <- RunTSNE(object = motif_obj, dims = 1:nPC, check_duplicates = FALSE)
+motif_obj <- RunUMAP(object = motif_obj, dims = 1:nPC)
+```
+
+```{r}
+saveRDS(motif_obj, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne", group.by='RNA_snn_res.50') + NoLegend()
+```
+
+```{r}
+DimPlot(motif_obj, reduction = "umap") + NoLegend()
+```
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne", split.by='Collection', ncol=3) + NoLegend()
+```
+```{r}
+DimPlot(motif_obj, reduction = "umap", group.by='Collection') + NoLegend()
+```
+
+Harmony
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+library(harmony)
+motif_obj <- RunHarmony(motif_obj, c('Collection'), assay.use = 'RNA')
+# Clustering
+nPC <- 100
+# Generate t-SNE and Umap
+motif_obj <- RunTSNE(object = motif_obj, dims = 1:nPC, reduction = "harmony", reduction.name = "tsne_harmony")
+motif_obj <- RunUMAP(object = motif_obj, dims = 1:nPC, reduction = "harmony", reduction.name = "umap_harmony")
+```
+
+```{r}
+colnames(motif_obj@meta.data) <- gsub('RNA_snn_res', 'RNA_uncorrected_snn_res',colnames(motif_obj@meta.data))
+```
+
+```{r}
+# Find clusters
+motif_obj <- FindNeighbors(object = motif_obj, dims = 1:nPC, k.param=20, reduction = "harmony")
+motif_obj <- FindClusters(object = motif_obj, resolution = 2, reduction = "harmony")
+motif_obj <- FindClusters(object = motif_obj, resolution = 5, reduction = "harmony")
+motif_obj <- FindClusters(object = motif_obj, resolution = 10, reduction = "harmony")
+motif_obj <- FindClusters(object = motif_obj, resolution = 25, reduction = "harmony")
+motif_obj <- FindClusters(object = motif_obj, resolution = 50, reduction = "harmony")
+motif_obj <- FindClusters(object = motif_obj, resolution = 100, reduction = "harmony")
+```
+
+```{r}
+colnames(motif_obj@meta.data) <- gsub('RNA_snn_res', 'RNA_harmony_snn_res',colnames(motif_obj@meta.data))
+```
+
+```{r}
+saveRDS(motif_obj, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne_harmony", group.by='RNA_harmony_snn_res.10') + NoLegend()
+```
+```{r}
+DimPlot(motif_obj, reduction = "tsne_harmony", group.by='Collection') + NoLegend()
+```
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne_harmony", split.by='Collection', group.by='RNA_uncorrected_snn_res.25', ncol=3) + NoLegend()
+```
+
+```{r}
+motif_obj@meta.data$IC <- as.numeric(motif_obj@meta.data$IC)
+FeaturePlot(motif_obj, 'IC', reduction = "tsne_harmony")
+```
+
+
+
+```{r}
+DimPlot(motif_obj, reduction = "umap_harmony", label=TRUE,  group.by='RNA_harmony_snn_res.10') + NoLegend()
+```
+12:GATA, 75/90:TBX, 35/34: AP1, 63: HOX, 70:REL, 53:RFX, 76: HSF, 54: EGR
+
+```{r}
+DimPlot(motif_obj, reduction = "umap_harmony", label=TRUE,  group.by='RNA_harmony_snn_res.10') + NoLegend()
+```
+```{r}
+FeaturePlot(motif_obj, 'nFeature_RNA', reduction = "umap_harmony")
+```
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne_harmony", label=TRUE,  group.by='RNA_harmony_snn_res.10') + NoLegend()
+```
+
+# Annotate cluster to TF family
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+addLogo <- function(motifEnrDT, addHTML=TRUE, dbVersion="v10", motifCol="motif")
+{
+  isNA <- which(motifEnrDT[[motifCol]]=="")
+  logos <- paste("http://motifcollections.aertslab.org/",
+                dbVersion,"/logos/",
+                motifEnrDT[[motifCol]],".png", sep="")
+  
+  if(addHTML)
+  {
+    logos <- paste('<img src="', logos,
+                '" height="52" alt="',
+                motifEnrDT[[motifCol]], '"></img>', sep="")
+  }
+  logos[isNA] <- ""
+  
+  data.table::data.table(logo=logos, motifEnrDT)
+}
+```
+
+```{r}
+# See jupyternotebbok for annotation
+#library(RcisTarget)
+clusters <- colnames(motif_obj@meta.data)[grep('snn_res', colnames(motif_obj@meta.data))]
+html_table <- motif_obj@meta.data[,c('Motif_name_2','Collection', 'IC', 'Length', clusters)]
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotations/annotations_dm_motifs-v10-nr.more_orthology.flybase-m0.00001-o0.0.tsv', sep='\t', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+
+html_table_merged <- merge(html_table, annotations, by=0, all=TRUE) 
+
+html_table_merged <- html_table_merged[-which(is.na(html_table_merged$RNA_harmony_snn_res.10)),]
+
+html_table_merged <- addLogo(html_table_merged, motifCol = "Motif_name_2")
+
+sel <- c("logo", "Direct_annot", "Orthology_annot", "Collection", "IC", 'Length', clusters )
+html_table_merged <- html_table_merged[,..sel]
+
+library(DT)
+library(data.table)
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=5))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotation_html/motif_clustering_simple_normalization_dm.html'), selfcontained=TRUE) 
+```
+
+# Create motif files for STAMP
+
+```{r}
+dir.create('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/')
+out <- split(as.vector(unlist(motif_obj$Motif_name_2)), f = motif_obj$RNA_harmony_snn_res.10)
+for (i in 1:length(out)){
+  write.table(out[[i]], file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/Cluster_',i-1,'.txt'), quote=FALSE, col.names=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+dir.create('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/')
+out <- split(as.vector(unlist(motif_obj$Motif_name_2)), f = motif_obj$RNA_harmony_snn_res.25)
+for (i in 1:length(out)){
+  write.table(out[[i]], file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Cluster_',i-1,'.txt'), quote=FALSE, col.names=FALSE, row.names=FALSE)
+}
+```
+
+# Run STAMP
+
+module load STAMP
+module load Python
+cd /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/
+for file in *.txt
+do
+  file_name="${file//.txt/}"
+  echo $file_name
+  mkdir -p /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/${file_name}
+  python3 /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/STAMP/STAMP_V10.py /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/${file_name}.txt -d /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/${file_name}
+done
+
+module load STAMP
+module load Python
+cd /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/
+for file in *.txt
+do
+  file_name="${file//.txt/}"
+  echo $file_name
+  mkdir -p /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/${file_name}
+  python3 /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/STAMP/STAMP_V10.py /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/${file_name}.txt -d /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/${file_name}
+done
+
+# Load STAMP results
+
+## Res 10
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters'
+folders <- list.files(path)
+files <- paste0(path, '/', folders[-grep('txt', folders)], '/', 'motif_cluster_table.txt')
+
+STAMP_RNA_harmony_snn_res_10_clusters <- vector()
+for (i in 1:length(files)){
+  table <- read.table(files[i], sep=' ')
+  cluster_number <- gsub('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_10_clusters/Cluster_','',files[i])
+  cluster_number <- gsub('motif_cluster_table.txt','', cluster_number)
+  cluster <- paste0(cluster_number, '.', as.vector(unlist(table[,1])))
+  names(cluster) <- as.vector(unlist(table[,3]))
+  STAMP_RNA_harmony_snn_res_10_clusters <- c(STAMP_RNA_harmony_snn_res_10_clusters, cluster)
+}
+
+STAMP_RNA_harmony_snn_res_10_clusters <- as.data.frame(STAMP_RNA_harmony_snn_res_10_clusters)
+motif_obj <- AddMetaData(motif_obj, STAMP_RNA_harmony_snn_res_10_clusters)
+```
+
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne_harmony", group.by='STAMP_RNA_harmony_snn_res_10_clusters', label=TRUE, label.size=1) + NoLegend()
+```
+
+## Res 25
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters'
+folders <- list.files(path)
+files <- paste0(path, '/', folders[-grep('txt', folders)], '/', 'motif_cluster_table.txt')
+
+STAMP_RNA_harmony_snn_res_25_clusters <- vector()
+for (i in 1:length(files)){
+  table <- read.table(files[i], sep=' ')
+  cluster_number <- gsub('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Cluster_','',files[i])
+  cluster_number <- gsub('motif_cluster_table.txt','', cluster_number)
+  cluster <- paste0(cluster_number, '.', as.vector(unlist(table[,1])))
+  names(cluster) <- as.vector(unlist(table[,3]))
+  STAMP_RNA_harmony_snn_res_25_clusters <- c(STAMP_RNA_harmony_snn_res_25_clusters, cluster)
+}
+STAMP_RNA_harmony_snn_res_25_clusters <- gsub('/', '', STAMP_RNA_harmony_snn_res_25_clusters)
+STAMP_RNA_harmony_snn_res_25_clusters <- as.data.frame(STAMP_RNA_harmony_snn_res_25_clusters)
+motif_obj <- AddMetaData(motif_obj, STAMP_RNA_harmony_snn_res_25_clusters)
+```
+
+
+```{r}
+DimPlot(motif_obj, reduction = "tsne_harmony", group.by='STAMP_RNA_harmony_snn_res_25_clusters', label=TRUE, label.size=1) + NoLegend()
+```
+
+```{r}
+saveRDS(motif_obj, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+# Create loom file
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+v <- vector()
+for (clus in names(table(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)[which(table(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters) > 1)])){
+  motifs <- rownames(motif_obj@meta.data)[which(motif_obj$STAMP_RNA_harmony_snn_res_25_clusters == clus)]
+  v <- c(v, apply(motif_obj@assays$RNA@counts[gsub('_', '-', motifs), motifs], 1,  function(x) max( x[x!=max(x)])))
+}
+
+```
+
+
+```{r}
+DGEM <- motif_obj@assays$RNA@counts
+default.umap.name <- 'Harmony UMAP'
+umap_coordinates <- Embeddings(motif_obj, reduction='umap_harmony')
+
+source('/staging/leuven/stg_00002/lcb/cbravo/Barrel_Cortex/Common_aux/SCopeLoomR_forannot.R')
+file.name <- "/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_V10_v2.loom"
+build_loom(
+  file.name=file.name,
+  dgem=DGEM,
+  title="V10 motif collection",
+  genome="Human", # Just for user information, not used internally
+  default.embedding=umap_coordinates,
+  default.embedding.name=default.umap.name 
+)
+
+# Hierarchy
+loom <- open_loom(file.name)
+add_hierarchy(loom = loom, hierarchy = create_hierarchy(level.1.name = "cisTarget", level.2.name = "motif_collection_clustering"))
+
+# Annotation
+cell.info <- motif_obj@meta.data
+for (var in colnames(cell.info)[2:ncol(cell.info)]){
+  toadd <- as.vector(unlist(cell.info[,var]))
+  names(toadd) <- rownames(cell.info)
+  if (class(toadd) %in% c('numeric', 'integer')){
+    # Add metric (numerical variable)
+    add_col_attr(loom=loom, key = var, value=toadd, as.metric = T)
+  } else {
+    if(length(unique(toadd)) < 245){
+    # Add annotation (categorical variable)
+      add_col_attr(loom=loom, key = var, value=toadd, as.annotation=T)
+  }
+  }
+}
+
+# Add extra embeddings
+add_embedding(loom=loom, embedding=Embeddings(motif_obj, reduction='umap'), name='umap')
+add_embedding(loom=loom, embedding=Embeddings(motif_obj, reduction='tsne_harmony'), name='tsne_harmony')
+add_embedding(loom=loom, embedding=Embeddings(motif_obj, reduction='tsne'), name='tsne')
+
+# Add Seurat
+
+colnames(motif_obj@meta.data)[grep('STAMP_RNA_harmony_snn_res_25_clusters', colnames(motif_obj@meta.data))] <- 'STAMP_clusters'
+colnames(motif_obj@meta.data)[grep('RNA_harmony_snn_res.25', colnames(motif_obj@meta.data))] <- 'RNA_snn_res.Leiden_clusters'
+motif_obj@meta.data <- motif_obj@meta.data[,-grep('RNA_harmony_snn_res', colnames(motif_obj@meta.data))]
+motif_obj@meta.data <- motif_obj@meta.data[,-grep('RNA_uncorrected_snn_res', colnames(motif_obj@meta.data))]
+name <- 'Leiden_clusters'
+exp <- paste0('RNA_snn_res.',name)
+motif_obj@meta.data[,exp] <- as.character(motif_obj@meta.data[,exp])
+annot <- cbind(1:length(unique(motif_obj@meta.data[,exp])), unique(motif_obj@meta.data[,exp]))
+equil <- annot[,1]
+names(equil) <- annot[,2]
+motif_obj@meta.data[,exp] <- as.integer(equil[as.vector(unlist(motif_obj@meta.data[,exp]))])
+IDs <- motif_obj@meta.data[,exp]
+colnames(annot) <- c('ID', 'annot')
+add_seurat_clustering(loom = loom
+                      , seurat = motif_obj
+                      , default.clustering.resolution = paste0("RNA_snn_res.", name)
+                      , default.clustering.overwrite = T
+                      , annotation = annot
+                      , annotation.cluster.id.cn = 'ID'
+                      , annotation.cluster.description.cn = 'annot'
+                      , seurat.marker.metric.accessors = c("avg_logFC", "p_val_adj")
+                      , seurat.marker.metric.names = c("Avg. logFC", "Adj. p-value")
+                      , seurat.marker.metric.description = c("Average log fold change from Wilcox differential test (cfr. Seurat)"
+                                                             , "Adjusted p-value using Bonferroni correction based on the total number of genes in the dataset (cfr. Seurat)"))
+
+colnames(motif_obj@meta.data)[grep('STAMP_clusters', colnames(motif_obj@meta.data))] <- 'RNA_snn_res.STAMP_clusters'
+motif_obj@meta.data <- motif_obj@meta.data[,-grep('Leiden_clusters', colnames(motif_obj@meta.data))]
+name <- 'STAMP_clusters'
+exp <- paste0('RNA_snn_res.',name)
+motif_obj@meta.data[,exp] <- as.character(motif_obj@meta.data[,exp])
+annot <- cbind(1:length(unique(motif_obj@meta.data[,exp])), unique(motif_obj@meta.data[,exp]))
+equil <- annot[,1]
+names(equil) <- annot[,2]
+motif_obj@meta.data[,exp] <- as.integer(equil[as.vector(unlist(motif_obj@meta.data[,exp]))])
+IDs <- motif_obj@meta.data[,exp]
+colnames(annot) <- c('ID', 'annot')
+add_seurat_clustering(loom = loom
+                      , seurat = motif_obj
+                      , default.clustering.resolution = paste0("RNA_snn_res.", name)
+                      , default.clustering.overwrite = T
+                      , annotation = annot
+                      , annotation.cluster.id.cn = 'ID'
+                      , annotation.cluster.description.cn = 'annot'
+                      , seurat.marker.metric.accessors = c("avg_logFC", "p_val_adj")
+                      , seurat.marker.metric.names = c("Avg. logFC", "Adj. p-value")
+                      , seurat.marker.metric.description = c("Average log fold change from Wilcox differential test (cfr. Seurat)"
+                                                             , "Adjusted p-value using Bonferroni correction based on the total number of genes in the dataset (cfr. Seurat)"))
+  
+
+
+flush(loom)
+```
+
+```{r}
+addLogo <- function(motifEnrDT, addHTML=TRUE, dbVersion="v10", motifCol="motif")
+{
+  isNA <- which(motifEnrDT[[motifCol]]=="")
+  logos <- paste("https://motifcollections.aertslab.org/",
+                dbVersion,"/logos/",
+                motifEnrDT[[motifCol]],".png", sep="")
+  
+  if(addHTML)
+  {
+    logos <- paste('<img src="', logos,
+                '" height="52" alt="',
+                motifEnrDT[[motifCol]], '"></img>', sep="")
+  }
+  logos[isNA] <- ""
+  
+  data.table::data.table(logo=logos, motifEnrDT)
+}
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+clusters <- unique(colnames(motif_obj@meta.data)[c(grep('harmony_snn_res_25', colnames(motif_obj@meta.data)), grep('harmony_snn_res.25$', colnames(motif_obj@meta.data)))])
+html_table <- motif_obj@meta.data[,c('Motif_name_2', 'Collection', 'IC', 'Length', clusters)]
+colnames(html_table)[1] <- 'Motif_name'
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotations/annotations_dm_motifs-v10-nr.more_orthology.flybase-m0.00001-o0.0.tsv', sep='\t', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+
+html_table_merged <- merge(html_table, annotations, by=0, all=TRUE) 
+
+html_table_merged <- html_table_merged[-which(is.na(html_table_merged$Motif_name)),]
+
+html_table_merged <- addLogo(html_table_merged, motifCol = "Motif_name")
+
+sel <- c("logo", "Direct_annot", "Orthology_annot", "Collection", "IC", 'Length', clusters )
+html_table_merged <- html_table_merged[,..sel]
+
+library(DT)
+library(data.table)
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=5))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotation_html/motif_clustering_simple_normalization_dm_STAMP.html'), selfcontained=TRUE) 
+```
+
+
+# Option A: Get metacluster consensus motif 
+
+### Convert to Jaspar
+mkdir -p /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/
+for folder in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Cluster*/
+do
+folder_name=$(basename $folder)
+echo ${folder_name}
+path_to_stamp=$(ls ${folder}tmp*.stamp/out_tree_clusters.txt)
+singularity run -B /staging/leuven/stg_00002/, /staging/leuven/res_00001/software/rsat/rsat-core_2020.02.29--py37pl526r36hc99cbb1_0.sif convert-matrix -from stamp -to jaspar -i ${path_to_stamp} -pseudo 1 -multiply 1 -decimals 1 -perm 0 -bg_pseudo 0.01 -return counts -to jaspar -o /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/${folder_name}.jaspar
+done
+
+### Rename patterns to metacluster
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/*
+do
+  file_name=$(basename $file)
+  file_name=${file_name//.jaspar/} 
+  i=${file_name//Cluster_/} 
+  j=1
+  max_j=$(grep '>' $file | wc -l)
+  while [ $j -le $max_j ]
+  do
+    name=metacluster_${i}.${j}
+    sed -i -e "0,/>.*$/s//$name/" /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/Cluster_${i}.jaspar 
+    j=$(( $j + 1 ))
+  done
+  sed -i -e "/metacluster/s//>metacluster/" /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/Cluster_${i}.jaspar 
+done
+
+### Split PWMs
+mkdir -p /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/individual/
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/*.jaspar
+do
+  file_name=$(basename $file)
+  file_name=${file_name//.jaspar/} 
+  i=${file_name//Cluster_/} 
+  j=1
+  max_j=$(grep '>' $file | wc -l)
+  while [ $j -le $max_j ]
+  do
+    name=metacluster_${i}.${j}
+    grep ${name}$ -A4  /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/Cluster_${i}.jaspar > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/individual/${name}.jaspar
+    j=$(( $j + 1 ))
+  done
+done
+
+### Convert to cluster-buster
+mkdir -p /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb/
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/individual/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.jaspar/} 
+echo ${file_name}
+singularity run -B /staging/leuven/stg_00002/, /staging/leuven/res_00001/software/rsat/rsat-core_2020.02.29--py37pl526r36hc99cbb1_0.sif convert-matrix -from jaspar -to cluster-buster -i ${file} -pseudo 1 -multiply 1 -decimals 1 -perm 0 -bg_pseudo 0.01 -return counts -to cluster-buster -o /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb/${file_name}.cb
+done
+
+
+mkdir -p /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb_x100/
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_jaspar/individual/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.jaspar/} 
+echo ${file_name}
+singularity run -B /staging/leuven/stg_00002/, /staging/leuven/res_00001/software/rsat/rsat-core_2020.02.29--py37pl526r36hc99cbb1_0.sif convert-matrix -from jaspar -to cluster-buster -i ${file} -pseudo 1 -multiply 100 -decimals 1 -perm 0 -bg_pseudo 0.01 -return counts -to cluster-buster -o /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb_x100/${file_name}.cb
+done
+
+#### Here!
+#### Reformat
+
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb_x100/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.cb/} 
+echo ${file_name}
+name=${file_name}
+sed -i "1s/.*/$name/" $file
+sed -i -e "/metacluster/s//>metacluster/" ${file}
+done
+
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.cb/} 
+echo ${file_name}
+name=${file_name}
+sed -i "1s/.*/$name/" $file
+sed -i -e "/metacluster/s//>metacluster/" ${file}
+done
+
+
+### Transfer to gbw-s-seq10
+cd /staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant
+rsync -a . --files-from=/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/singlets.txt /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/singlets/
+rsync -a . --files-from=/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/dimers.txt /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/dimers/
+rsync -av  vsc31305@login-genius.hpc.kuleuven.be:/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/singlets .
+rsync -av  vsc31305@login-genius.hpc.kuleuven.be:/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/dimers .
+rsync -av  vsc31305@login-genius.hpc.kuleuven.be:/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb .
+rsync -av  vsc31305@login-genius.hpc.kuleuven.be:/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/cluster_motifs_stamp_cb_x100 .
+
+### Create logos
+conda activate make_logos
+dir=/media/data/users/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/dimers_temp
+mkdir -p ${dir}
+motif_dir=/media/data/users/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/dimers
+cd /media/data/lcb/icistarget/data/motif2tf_project/motif_collections/scripts/
+source create_logos.sh
+declare -i nbr_jobs=20
+export LOGO_TMP_DIR=${dir}
+mkdir -p ${dir}/fixed_height_and_width/cluster_buster
+cp ${motif_dir}/* ${dir}/fixed_height_and_width/cluster_buster
+create_fixed_height_and_width_logos
+
+conda activate make_logos
+dir=/media/data/users/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/cluster_motifs_stamp_cb_x100_temp
+mkdir -p ${dir}
+motif_dir=/media/data/users/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/cluster_motifs_stamp_cb_x100
+cd /media/data/lcb/icistarget/data/motif2tf_project/motif_collections/scripts/
+source create_logos.sh
+declare -i nbr_jobs=20
+export LOGO_TMP_DIR=${dir}
+mkdir -p ${dir}/fixed_height_and_width/cluster_buster
+cp ${motif_dir}/* ${dir}/fixed_height_and_width/cluster_buster
+create_fixed_height_and_width_logos
+
+conda activate make_logos
+dir=/media/data/users/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/singlets_temp
+mkdir -p ${dir}
+motif_dir=/media/data/users/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/singlets
+cd /media/data/lcb/icistarget/data/motif2tf_project/motif_collections/scripts/
+source create_logos.sh
+declare -i nbr_jobs=20
+export LOGO_TMP_DIR=${dir}
+mkdir -p ${dir}/fixed_height_and_width/cluster_buster
+cp ${motif_dir}/* ${dir}/fixed_height_and_width/cluster_buster
+create_fixed_height_and_width_logos
+
+
+# In each folder
+rsync -av  *.png vsc31305@login-genius.hpc.kuleuven.be:/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/logos/
+
+
+- In r06i00n12
+module load tmux
+tmux new -s cbust_metacluster_motif
+#### Get fasta sequences
+module load BEDTools
+bedtools getfasta -fi /staging/leuven/stg_00002/lcb/resources/mouse/mm10/mm10.fa -bed /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.bed > /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.fa
+#### Activate environment
+my_conda_initialize
+conda activate /staging/leuven/stg_00002/lcb/ghuls/software/miniconda3/envs/create_cistarget_databases
+#### Set ${create_cistarget_databases_dir} to https://github.com/aertslab/create_cisTarget_databases
+create_cistarget_databases_dir='/staging/leuven/stg_00002/lcb/ghuls/software/create_cisTarget_databases'
+#### Score the motifs in 10 chunks
+for current_part in {1..10} ; do
+     ${create_cistarget_databases_dir}/create_cistarget_motif_databases.py \
+         -f  /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.fa \
+         -M /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_5_clusters/motif_collection_cluster_motifs_stamp_cb_x100_and_singlets/singletons/ \
+         -m /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_5_clusters/motif_collection_cluster_motifs_stamp_cb_x100_and_singlets/motifs.txt \
+         -p ${current_part} 10 \
+         -o /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_metacluster_motif/Liver_MO \
+         -t 20
+done
+#### CONTINUE HERE
+#### Merge scores
+${create_cistarget_databases_dir}/combine_partial_regions_or_genes_vs_motifs_or_tracks_cistarget_dbs.py -i  /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_metacluster_motif/Liver_MO -o /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_metacluster_motif/
+#### Remove chunks
+rm /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_metacluster_motif/*part*
+#### Create rankings
+${create_cistarget_databases_dir}/convert_motifs_or_tracks_vs_regions_or_genes_scores_to_rankings_cistarget_dbs.py -i /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_metacluster_motif/Liver_MO.motifs_vs_regions.scores.feather -s 555
+
+
+# Option B: Combine motifs in one file
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/metaclusters/'
+dir.create(path)
+out <- split(as.vector(unlist(motif_obj$Motif_name_2)), f = motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)
+for (i in 1:length(out)){
+  out[[i]] <- paste0('/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant/',out[[i]], '.cb')
+  write.table(out[[i]], file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/metaclusters/metacluster_',names(out)[i],'.txt'), quote=FALSE, col.names=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/'
+dir.create(path)
+out <- split(as.vector(unlist(motif_obj$Motif_name_2)), f = motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)
+out <- out[['10.1']]
+lengths <- c(1,5,10,20,50,80,100,150,170)
+for (i in 1:length(lengths)){
+  sample <- sample(x = out,size = lengths[i], replace=FALSE)
+  motifs <- paste0('/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant/',sample, '.cb')
+  write.table(motifs, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/motifs_',lengths[i],'.txt'), quote=FALSE, col.names=FALSE, row.names=FALSE)
+}
+```
+
+cd /staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant/
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.txt/} 
+echo ${file_name}
+{ xargs cat < ${file}; } > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/singletons/${file_name}.cb
+done
+
+cd /staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant/
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/metaclusters/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.txt/} 
+echo ${file_name}
+{ xargs cat < ${file}; } > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/singletons/${file_name}.cb
+done
+
+# For the Fox test
+
+head -n 50000 /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.bed > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/example_regions.bed
+#### Get fasta sequences
+module load BEDTools
+bedtools getfasta -fi /staging/leuven/stg_00002/lcb/resources/mouse/mm10/mm10.fa -bed /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/example_regions.bed > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/example_regions.fa
+#### Activate environment
+my_conda_initialize
+conda activate /staging/leuven/stg_00002/lcb/ghuls/software/miniconda3/envs/create_cistarget_databases
+#### Set ${create_cistarget_databases_dir} to https://github.com/aertslab/create_cisTarget_databases
+create_cistarget_databases_dir='/staging/leuven/stg_00002/lcb/ghuls/software/create_cisTarget_databases'
+#### Score the motifs in 10 chunks
+for current_part in {1..5} ; do
+     ${create_cistarget_databases_dir}/create_cistarget_motif_databases.py \
+         -f  /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/example_regions.fa\
+         -M /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/singletons/ \
+         -m /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/singletons/motifs.txt \
+         -p ${current_part} 5 \
+         -o /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/Fox_test \
+         -t 20
+done
+#### CONTINUE HERE
+#### Merge scores
+${create_cistarget_databases_dir}/combine_partial_regions_or_genes_vs_motifs_or_tracks_scores_cistarget_dbs.py -i  /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/Fox_test -o /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/
+#### Remove chunks
+rm /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/*part*
+#### Create rankings
+${create_cistarget_databases_dir}/convert_motifs_or_tracks_vs_regions_or_genes_scores_to_rankings_cistarget_dbs.py -i /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/Fox_test.motifs_vs_regions.scores.feather -s 555
+
+```{r}
+library(feather)
+mat <- read_feather('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/Fox_test/Fox_test.motifs_vs_regions.scores.feather')
+mat <- mat[1:9]
+colnames(mat) <- gsub('motifs_', '', colnames(mat))
+colnames(mat) <- paste(colnames(mat), 'motifs')
+```
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- cor(mat)
+dist.mat <- dist(cormat)
+clust <- hclust(dist.mat)
+cormat <- cormat[clust$order,rev(clust$order)]
+cormat <- round(cormat, 2)
+```
+
+Make correlation heatmap.
+
+```{r,  fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "floralwhite", high = "red", 
+   midpoint = 0.5, limit = c(0.5,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+```
+```{r, fig.height = 8, fig.width = 8, fig.align = "center", message = FALSE, warnings = FALSE}
+library(psych)
+pairs.panels(mat[,clust$order], 
+             method = "pearson", # correlation method
+             hist.col = "dodgerblue",
+             density = TRUE,  # show density plots
+             ellipses = TRUE) # show correlation ellipses
+```
+
+# Continue
+
+- In r06i01n13
+module load tmux
+tmux new -s cbust_merged
+#### Get fasta sequences
+module load BEDTools
+bedtools getfasta -fi /staging/leuven/stg_00002/lcb/resources/mouse/mm10/mm10.fa -bed /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.bed > /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.fa
+#### Activate environment
+my_conda_initialize
+conda activate /staging/leuven/stg_00002/lcb/ghuls/software/miniconda3/envs/create_cistarget_databases
+#### Set ${create_cistarget_databases_dir} to https://github.com/aertslab/create_cisTarget_databases
+create_cistarget_databases_dir='/staging/leuven/stg_00002/lcb/ghuls/software/create_cisTarget_databases'
+#### Score the motifs in 10 chunks
+for current_part in {1..10} ; do
+     ${create_cistarget_databases_dir}/create_cistarget_motif_databases.py \
+         -f  /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/consensus_peak_calling/consensus_regions.fa \
+         -M /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_5_clusters/motif_collection_combined_motifs_stamp_and_singlets/singletons/ \
+         -m /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_5_clusters/motif_collection_combined_motifs_stamp_and_singlets/motifs.txt \
+         -p ${current_part} 10 \
+         -o /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_combined/Liver_MO \
+         -t 20
+done
+#### CONTINUE HERE
+#### Merge scores
+${create_cistarget_databases_dir}/combine_partial_regions_or_genes_vs_motifs_or_tracks_cistarget_dbs.py -i  /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_combined/Liver_MO -o /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_combined/
+#### Remove chunks
+rm /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_combined/*part*
+#### Create rankings
+${create_cistarget_databases_dir}/convert_motifs_or_tracks_vs_regions_or_genes_scores_to_rankings_cistarget_dbs.py -i /staging/leuven/stg_00002/lcb/cbravo/Liver/Multiome/pycistopic/cbust_motif_clustering_combined/Liver_MO.motifs_vs_regions.scores.feather -s 555
+
+# Create annotation files
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.more_orthology.hgnc-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(motif, metacluster, x, fixed=TRUE)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_clust.tsv', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.more_orthology.mgi-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(motif, metacluster, x, fixed=TRUE)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_clust.tsv', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.more_orthology.flybase-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(motif, metacluster, x, fixed=TRUE)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_clust.tsv', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.more_orthology.chicken-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(motif, metacluster, x, fixed=TRUE)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.more_orthology.chicken-mm0.00001-o0.0_clust.tsv', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+# NEW Create annotation files
+
+```{r}
+# New files
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.hgnc-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(paste0(motif, '$'), metacluster, x)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.hgnc-m0.00001-o0.0.tbl', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+```{r}
+# New files
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.mgi-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(paste0(motif, '$'), metacluster, x)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.mgi-m0.00001-o0.0.tbl', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+```{r}
+# New files
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.flybase-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(paste0(motif, '$'), metacluster, x)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.flybase-m0.00001-o0.0.tbl', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+```{r}
+# New files
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.chicken-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+i <- 1
+for (motif in rownames(motif_obj@meta.data)){
+  print(i)
+  metacluster <- paste0('metacluster_', motif_obj@meta.data[motif,'STAMP_RNA_harmony_snn_res_25_clusters'])
+  annot <- data.frame(lapply(annot, function(x) {gsub(paste0(motif, '$'), metacluster, x)}))
+  i <- i+1
+}
+colnames(annot)[1] <- '#motif_id'
+write.table(annot, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10-nr.chicken-m0.00001-o0.0.tbl', sep='\t', quote=FALSE, row.names=FALSE)
+```
+
+# Motifs without annotation
+
+```{r}
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.mgi-m0.001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+summary(annot[,7])
+```
+
+```{r}
+file_name <- '/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_to_tf_db_data/snapshots/motifs-v10-nr.mgi-m0.00001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+summary(annot[,7])
+hist(annot[,7], breaks=100000, xlim=c(0, 10^-8))
+```
+
+
+```{r}
+file_name <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/snapshots/motifs-v10nr_clust-nr.mgi-m0.001-o0.0.tbl'
+annot <- read.csv(file_name, sep='\t')
+summary(annot[,7])
+```
+
+# Make tomtom correlation heatmap for example figure
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+seurat.data  <- motif_obj[["RNA"]]@data[1:500,1:500]
+seurat.data.cor.pearson  <- cor(t(as.matrix(seurat.data)), method = "pearson")
+```
+
+```{r}
+cormat <- seurat.data.cor.pearson
+dist.mat <- dist(cormat)
+clust <- hclust(dist.mat)
+cormat <- cormat[clust$order,rev(clust$order)]
+```
+
+```{r, fig.height = 10, fig.width = 10, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "floralwhite", high = "red", 
+   midpoint = 0, space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+ggheatmap +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+```
+# Example boxplot
+
+```{r}
+library(ggpubr)
+data("ToothGrowth")
+head(ToothGrowth)
+ToothGrowth <- ToothGrowth[-which(ToothGrowth$dose == 1),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Example_boxplot.pdf')
+ggboxplot(ToothGrowth, x = "dose", y = "len",
+          fill = "dose")+
+  stat_compare_means() + ylab('CRM score') + xlab('Region set') + scale_fill_discrete(labels=c('Set1', 'Set2')) + scale_x_discrete(labels=c("Set1", "Set2")) + theme(text = element_text(size = 20))
+dev.off()
+```
+
+# Quantify TFs based on annotation
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_direct <- unique(gsub(' ', '', unlist(strsplit(unique(human$Direct_annot), split = ","))))
+human_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(human$Orthology_annot), split = ","))))
+mouse_direct <- unique(gsub(' ', '', unlist(strsplit(unique(mouse$Direct_annot), split = ","))))
+mouse_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(mouse$Orthology_annot), split = ","))))
+fly_direct <- unique(gsub(' ', '', unlist(strsplit(unique(fly$Direct_annot), split = ","))))
+fly_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(fly$Orthology_annot), split = ","))))
+```
+
+```{r}
+ # library
+library(ggplot2)
+ 
+# create a dataset
+specie <- c(rep("Human" , 2) , rep("Mouse" , 2) , rep("Fly" , 2))
+Annotation <- rep(c("Direct" , "Orthology"),3)
+value <- c(length(human_direct), length(human_ortho[-which(human_ortho %in% human_direct)]), length(mouse_direct), length(mouse_ortho[-which(mouse_ortho %in% mouse_direct)]),  length(fly_direct), length(fly_ortho[-which(fly_ortho %in% fly_direct)]))
+data <- data.frame(specie,Annotation,value)
+data$specie <- factor(data$specie, levels=c('Human', 'Mouse', 'Fly'))
+ 
+# Stacked
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Number_of_TFs_per_specie.pdf')
+ggplot(data, aes(fill=Annotation, y=value, x=specie)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + xlab('Specie') + theme(text = element_text(size = 20)) + ylab('Number of TFs') + stat_summary(fun.y = sum, aes(label = ..y.., group = specie), geom = "text", vjust = -.2) + ylim(0,1600)
+dev.off()
+```
+
+
+```{r}
+human$Collection <- sapply(strsplit(unlist(human$MotifID), split = "__"), "[", 1)
+df_split <- split(human, human$Collection)
+#df_split <- df_split[-grep('metacluster', names(df_split))]  
+```
+
+```{r}
+ # library
+library(ggplot2)
+data <- data.frame()
+for (i in 1:length(df_split)){
+  specie <- c(rep(names(df_split)[i] , 2))
+  Annotation <- c("Direct" , "Orthology")
+  human_direct <- unique(gsub(' ', '', unlist(strsplit(unique(df_split[[i]]$Direct_annot), split = ","))))
+  human_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(df_split[[i]]$Orthology_annot), split = ","))))
+  value <- c(length(human_direct), length(human_ortho[-which(human_ortho %in% human_direct)]))
+  data <- rbind(data, data.frame(specie,Annotation,value))
+}
+data <- data[-which(data$value == 0),]
+data$specie <- factor(data$specie, levels = c('transfac_pro', 'cisbp', 'hocomoco',  'swissregulon',  'jaspar', 'taipale_cyt_meth', 'taipale', 'dbtfbs', 'homer', 'kznf','tfdimers', 'hdpi', 'transfac_public', 'taipale_tf_pairs', 'c2h2_zfs', 'nitta'))
+# Stacked
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/plots/Number_of_TFs_human_per_colection.pdf')
+ggplot(data, aes(fill=Annotation, y=value, x=specie)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + xlab('Collection') + theme(text = element_text(size = 20)) + ylab('Number of TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = specie), geom = "text", vjust = -.2) + ylim(0,1500)
+dev.off()
+```
+```{r}
+ # library
+mouse$Collection <- sapply(strsplit(unlist(mouse$MotifID), split = "__"), "[", 1)
+df_split <- split(mouse, mouse$Collection)
+
+ # library
+library(ggplot2)
+data <- data.frame()
+for (i in 1:length(df_split)){
+  specie <- c(rep(names(df_split)[i] , 2))
+  Annotation <- c("Direct" , "Orthology")
+  human_direct <- unique(gsub(' ', '', unlist(strsplit(unique(df_split[[i]]$Direct_annot), split = ","))))
+  human_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(df_split[[i]]$Orthology_annot), split = ","))))
+  value <- c(length(human_direct), length(human_ortho[-which(human_ortho %in% human_direct)]))
+  data <- rbind(data, data.frame(specie,Annotation,value))
+}
+data <- data[-which(data$value == 0),]
+data$specie <- factor(data$specie, levels = c('transfac_pro', 'cisbp', 'swissregulon', 'hocomoco',  'jaspar', 'taipale_cyt_meth', 'taipale', 'dbtfbs', 'homer', 'kznf','tfdimers', 'hdpi', 'transfac_public', 'taipale_tf_pairs', 'c2h2_zfs', 'nitta'))
+# Stacked
+#pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Number_of_TFs_mouse.pdf')
+ggplot(data, aes(fill=Annotation, y=value, x=specie)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + xlab('Collection') + theme(text = element_text(size = 20)) + ylab('Number of TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = specie), geom = "text", vjust = -.2) + ylim(0,1500)
+#dev.off()
+```
+
+
+```{r}
+ # library
+fly$Collection <- sapply(strsplit(unlist(fly$MotifID), split = "__"), "[", 1)
+df_split <- split(fly, fly$Collection)
+ # library
+library(ggplot2)
+data <- data.frame()
+for (i in 1:length(df_split)){
+  specie <- c(rep(names(df_split)[i] , 2))
+  Annotation <- c("Direct" , "Orthology")
+  human_direct <- unique(gsub(' ', '', unlist(strsplit(unique(df_split[[i]]$Direct_annot), split = ","))))
+  human_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(df_split[[i]]$Orthology_annot), split = ","))))
+  value <- c(length(human_direct), length(human_ortho[-which(human_ortho %in% human_direct)]))
+  data <- rbind(data, data.frame(specie,Annotation,value))
+}
+data <- data[-which(data$value == 0),]
+data$specie <- factor(data$specie, levels = c('cisbp', 'flyfactorsurvey', 'transfac_pro', 'nitta', 'jaspar', 'stark', 'bergman', 'transfac_public', 'idmmpmm', 'c2h2_zfs'))
+# Stacked
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Number_of_TFs_fly.pdf')
+ggplot(data, aes(fill=Annotation, y=value, x=specie)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + xlab('Collection') + theme(text = element_text(size = 20)) + ylab('Number of TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = specie), geom = "text", vjust = -.2) + ylim(0,500)
+dev.off()
+```
+
+# Overlaps with our current TF list
+
+```{r}
+human <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+mouse <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+fly <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs_unclustered/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_table.tsv', sep=',', header=1)
+```
+
+```{r}
+human_direct <- unique(gsub(' ', '', unlist(strsplit(unique(human$Direct_annot), split = ","))))
+human_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(human$Orthology_annot), split = ","))))
+mouse_direct <- unique(gsub(' ', '', unlist(strsplit(unique(mouse$Direct_annot), split = ","))))
+mouse_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(mouse$Orthology_annot), split = ","))))
+fly_direct <- unique(gsub(' ', '', unlist(strsplit(unique(fly$Direct_annot), split = ","))))
+fly_ortho <- unique(gsub(' ', '', unlist(strsplit(unique(fly$Orthology_annot), split = ","))))
+```
+
+
+```{r}
+human_tfs <- read.table('/staging/leuven/stg_00002/lcb/cflerin/resources/allTFs_hg38.txt')[,1]
+human_motifs <- unlist(unique(c(human_direct, human_ortho)))
+```
+
+```{r}
+sum(human_motifs %in% human_tfs)
+human_motifs[-which(human_motifs %in% human_tfs)]
+```
+```{r}
+all <- as.data.frame(unique(c(human_motifs, human_tfs)))
+write.table(all, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/scenicplus/allTFs_hg38.txt', col.names=FALSE, row.names = FALSE, quote=FALSE)
+```
+
+```{r}
+mouse_tfs <- read.table('/staging/leuven/stg_00002/lcb/cflerin/resources/allTFs_mm.txt')[,1]
+mouse_motifs <- unlist(unique(c(mouse_direct, mouse_ortho)))
+```
+
+```{r}
+sum(mouse_motifs %in% mouse_tfs)
+mouse_motifs[-which(mouse_motifs %in% mouse_tfs)]
+```
+```{r}
+all <- as.data.frame(unique(c(mouse_motifs, mouse_tfs)))
+write.table(all, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/scenicplus/allTFs_mm.txt', col.names=FALSE, row.names = FALSE, quote=FALSE)
+```
+
+```{r}
+fly_tfs <- read.table('/staging/leuven/stg_00002/lcb/cflerin/resources/allTFs_dmel.txt')[,1]
+fly_motifs <- unlist(unique(c(fly_direct, fly_ortho)))
+```
+
+```{r}
+sum(fly_motifs %in% fly_tfs)
+fly_motifs[-which(fly_motifs %in% fly_tfs)]
+```
+
+```{r}
+all <- as.data.frame(unique(c(fly_motifs, fly_tfs)))
+write.table(all, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/scenicplus/allTFs_dmel.txt', col.names=FALSE, row.names = FALSE, quote=FALSE)
+```
+
+# Make cluster tree with motifs
+
+```{r}
+library(motifStack)
+motifs <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+#plot(motifs[[1]])
+```
+
+```{r}
+selected_motifs <- c('taipale_cyt_meth__SOX10_AACAATNNNNNATTGTT_eDBD_meth.', 'taipale_cyt_meth__SOX10_AACAATNNNNNATTGTT_eDBD_repr.', 'cisbp__M00205.', 'cisbp__M00210.', 'hocomoco__SOX10_MOUSE.H11MO.1.A.', 'hocomoco__SOX10_HUMAN.H11MO.1.A.')
+```
+
+```{r}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  sub_motifs[[i]]$name <- ''
+}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_stacks/Example.pdf')
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0)
+dev.off()
+```
+
+# Motif enrichment benchmark
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/Homer/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+homer <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(homer) <- gsub('.tsv', '', list.files(path))
+
+sum(complete.cases(homer[,'direct', drop=FALSE]))
+#254
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/cisTarget_v10_unclustered/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+ctx_unc <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(ctx_unc) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(ctx_unc[,'direct', drop=FALSE]) + complete.cases(ctx_unc[,'orthology', drop=FALSE]) > 0)
+# 266
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/cisTarget_v10_clustered/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+ctx_c <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(ctx_c) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(ctx_c[,'direct', drop=FALSE]) + complete.cases(ctx_c[,'orthology', drop=FALSE]) > 0)
+# 286
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/DEM_v10_unclustered/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+dem_unc <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(dem_unc) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(dem_unc[,'direct', drop=FALSE]) + complete.cases(dem_unc[,'orthology', drop=FALSE]) > 0)
+# 226
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/DEM_v10_clustered/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+dem_c <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(dem_c) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(dem_c[,'direct', drop=FALSE]) + complete.cases(dem_c[,'orthology', drop=FALSE]) > 0)
+# 281
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/cisTarget_v10_archetype/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+ctx_arc <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(ctx_arc) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(ctx_arc[,'direct', drop=FALSE]) + complete.cases(ctx_arc[,'orthology', drop=FALSE]) > 0)
+# 276
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/DEM_v10_archetype/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+dem_arc <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(dem_arc) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(dem_arc[,'direct', drop=FALSE]) + complete.cases(dem_unc[,'orthology', drop=FALSE]) > 0)
+# 265
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/cisTarget_v10_public/tsv/'
+direct <- vector()
+orthology <- vector()
+motif_similarity <- vector()
+o_and_ms <- vector()
+for (file in list.files(path)){
+  f <- read.delim(paste0(path, file), sep='\t')
+  t <- strsplit(file, '_')[[1]][2]
+  x <- grep(t, f$Direct_annot)
+  if (length(x) > 0){
+    direct <- c(direct, x[1])
+  } else{
+    direct <- c(direct, NA)
+  }
+  x <- grep(t, f$Orthology_annot)
+  if (length(x) > 0){
+    orthology <- c(orthology, x[1])
+  } else {
+      orthology <- c(orthology, NA)
+  }
+  x <- grep(t, f$Motif_similarity_annot)
+  if (length(x) > 0){
+    motif_similarity <- c(motif_similarity, x[1])
+  } else {
+    motif_similarity <- c(motif_similarity, NA)
+  }
+  x <- grep(t, f$Motif_similarity_and_Orthology_annot)
+  if (length(x) > 0){
+    o_and_ms <- c(o_and_ms, x[1])
+  } else {
+    o_and_ms <- c(o_and_ms, NA)
+  }
+}
+ctx_pub <- cbind(direct, orthology, motif_similarity, o_and_ms)
+rownames(ctx_pub) <- gsub('.tsv', '', list.files(path))
+sum(complete.cases(ctx_pub[,'direct', drop=FALSE]) + complete.cases(ctx_pub[,'orthology', drop=FALSE]) > 0)
+# 284
+```
+
+
+```{r}
+homer_v <- vector()
+for (i in 0:100){
+  homer_v <- c(homer_v, sum(homer[,"direct"] <= i, na.rm=T))
+}
+
+ctx_unc_v <- vector()
+#d <- ctx_unc[,c('direct')]
+d <- ctx_unc[,c('direct', 'orthology')]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_unc_v <- c(ctx_unc_v, sum(d <= i, na.rm=T))
+}
+
+ctx_arc_v <- vector()
+#d <- ctx_unc[,c('direct')]
+d <- ctx_arc[,c('direct', 'orthology')]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_arc_v <- c(ctx_arc_v, sum(d <= i, na.rm=T))
+}
+
+ctx_c_v <- vector()
+#d <- ctx_c[,c('direct')]
+d <- ctx_c[,c('direct', 'orthology')]
+#d <- ctx_c
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_c_v <- c(ctx_c_v, sum(d <= i, na.rm=T))
+}
+
+ctx_pub_v <- vector()
+#d <- ctx_c[,c('direct')]
+d <- ctx_pub[,c('direct', 'orthology')]
+#d <- ctx_c
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_pub_v <- c(ctx_pub_v, sum(d <= i, na.rm=T))
+}
+
+dem_unc_v <- vector()
+#d <- dem_unc[,c('direct')]
+d <- dem_unc[,c('direct', 'orthology')]
+#d <- dem_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_unc_v <- c(dem_unc_v, sum(d <= i, na.rm=T))
+}
+
+dem_arc_v <- vector()
+#d <- dem_unc[,c('direct')]
+d <- dem_arc[,c('direct', 'orthology')]
+#d <- dem_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_arc_v <- c(dem_arc_v, sum(d <= i, na.rm=T))
+}
+
+
+dem_c_v <- vector()
+#d <- dem_unc[,c('direct')]
+d <- dem_c[,c('direct', 'orthology')]
+#d <- dem_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_c_v <- c(dem_c_v, sum(d <= i, na.rm=T))
+}
+```
+
+
+```{r}
+library(ggplot2)
+position <- 0:100
+df <- as.data.frame(rbind(cbind(position, homer_v, rep('Homer', length(position))),
+                          cbind(position, ctx_unc_v, rep('Ctx unclustered', length(position))),
+                          cbind(position, ctx_c_v, rep('Ctx clustered', length(position))),
+                          cbind(position, ctx_arc_v, rep('Ctx archetype', length(position))),
+                          cbind(position, ctx_pub_v, rep('Ctx public', length(position))),
+                          cbind(position, dem_unc_v, rep('DEM unclustered', length(position))),
+                          cbind(position, dem_c_v, rep('DEM clustered', length(position))),
+                          cbind(position, dem_arc_v, rep('DEM archetype', length(position)))))
+colnames(df) <- c('Position', 'Rank', 'Method')
+df$Position <- as.numeric(df$Position)
+df$Rank <- as.numeric(df$Rank)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/plots/Motif_benchmark_homer_direct_others_d_and_o_v2.pdf')
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Reds')[2:6]
+c2 <- brewer.pal(4, 'Blues')[2:6]
+c3 <- brewer.pal(3, 'Greens')[2:3]
+ggplot(df, aes(x=Position, y=Rank)) +  
+  geom_point(aes(colour = Method)) + 
+  geom_line(aes(colour = Method)) +
+  scale_colour_manual(values = c("Homer"= 'forestgreen', "Ctx unclustered"=c1[1], "Ctx archetype"=c1[2], "Ctx clustered"='black', "Ctx public"='purple', "DEM unclustered"=c2[1], "DEM archetype"=c2[2], "DEM clustered"=c2[3])) + labs(x = "Rank",
+         y = "Number of hits") +  theme_bw() + theme(text = element_text(size = 20))
+dev.off()
+```
+```{r}
+# Hits at position 1
+df <- df[which(df$Position == 1),]
+df <- df[order(df$Rank),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/plots/Motif_benchmark_homer_direct_others_d_and_o_first_hit_v2.pdf')
+ggplot(df, aes(x=reorder(Method, -Rank), y=Rank, fill=Method)) +  
+  geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("Homer"= 'forestgreen', "Ctx unclustered"=c1[1], "Ctx archetype"=c1[2], "Ctx clustered"=c1[3], "DEM unclustered"=c2[1], "DEM archetype"=c2[2], "DEM clustered"=c2[3])) + labs(x = "Rank",
+         y = "Number of hits") +  theme_bw() + theme(text = element_text(size = 20), axis.text.x = element_text(angle = 90))
+dev.off()
+```
+
+```{r}
+homer_v <- vector()
+for (i in 0:100){
+  homer_v <- c(homer_v, sum(homer[,"direct"] <= i, na.rm=T))
+}
+
+ctx_unc_v <- vector()
+d <- ctx_unc[,c('direct'), drop=FALSE]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_unc_v <- c(ctx_unc_v, sum(d <= i, na.rm=T))
+}
+
+ctx_c_v <- vector()
+d <- ctx_c[,c('direct'), drop=FALSE]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_c_v <- c(ctx_c_v, sum(d <= i, na.rm=T))
+}
+
+dem_unc_v <- vector()
+d <- dem_unc[,c('direct'), drop=FALSE]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_unc_v <- c(dem_unc_v, sum(d <= i, na.rm=T))
+}
+
+dem_c_v <- vector()
+d <- dem_c[,c('direct'), drop=FALSE]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_c_v <- c(dem_c_v, sum(d <= i, na.rm=T))
+}
+
+dem_arc_v <- vector()
+#d <- dem_unc[,c('direct')]
+d <- dem_arc[,c('direct'), drop=FALSE]
+#d <- dem_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_arc_v <- c(dem_arc_v, sum(d <= i, na.rm=T))
+}
+
+
+ctx_arc_v <- vector()
+#d <- ctx_unc[,c('direct')]
+d <- ctx_arc[,c('direct'), drop=FALSE]
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_arc_v <- c(ctx_arc_v, sum(d <= i, na.rm=T))
+}
+```
+
+
+```{r}
+library(ggplot2)
+position <- 0:100
+df <- as.data.frame(rbind(cbind(position, homer_v, rep('Homer', length(position))),
+                          cbind(position, ctx_unc_v, rep('Ctx unclustered', length(position))),
+                          cbind(position, ctx_c_v, rep('Ctx clustered', length(position))),
+                          cbind(position, ctx_arc_v, rep('Ctx archetype', length(position))),
+                          cbind(position, dem_unc_v, rep('DEM unclustered', length(position))),
+                          cbind(position, dem_c_v, rep('DEM clustered', length(position))),
+                          cbind(position, dem_arc_v, rep('DEM archetype', length(position)))))
+colnames(df) <- c('Position', 'Rank', 'Method')
+df$Position <- as.numeric(df$Position)
+df$Rank <- as.numeric(df$Rank)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/plots/Motif_benchmark_homer_direct_others_d_v2.pdf')
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Reds')[2:6]
+c2 <- brewer.pal(4, 'Blues')[2:6]
+c3 <- brewer.pal(3, 'Greens')[2:3]
+ggplot(df, aes(x=Position, y=Rank)) +  
+  geom_point(aes(colour = Method)) + 
+  geom_line(aes(colour = Method)) +
+  scale_colour_manual(values = c("Homer"= 'forestgreen', "Ctx unclustered"=c1[1], "Ctx archetype"=c1[2], "Ctx clustered"=c1[3], "DEM unclustered"=c2[1], "DEM archetype"=c2[2], "DEM clustered"=c2[3])) + labs(x = "Rank",
+         y = "Number of hits") +  theme_bw() + theme(text = element_text(size = 20))
+dev.off()
+```
+```{r}
+# Hits at position 1
+df <- df[which(df$Position == 1),]
+df <- df[order(df$Rank),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/plots/Motif_benchmark_homer_direct_others_d_first_hit_v2.pdf')
+ggplot(df, aes(x=reorder(Method, -Rank), y=Rank, fill=Method)) +  
+  geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("Homer"= 'forestgreen', "Ctx unclustered"=c1[1], "Ctx archetype"=c1[2], "Ctx clustered"=c1[3], "DEM unclustered"=c2[1], "DEM archetype"=c2[2], "DEM clustered"=c2[3])) + labs(x = "Rank",
+         y = "Number of hits") +  theme_bw() + theme(text = element_text(size = 20), axis.text.x = element_text(angle = 90))
+dev.off()
+```
+
+
+```{r}
+homer_v <- vector()
+for (i in 0:100){
+  homer_v <- c(homer_v, sum(homer[,"direct"] <= i, na.rm=T))
+}
+
+#homer_v <- vector()
+#d <- ctx_unc[,c('direct')]
+#d <- ctx_unc[,c('direct', 'orthology')]
+#d <- homer
+#d <- apply(d, 1, FUN = min, na.rm=T)
+#for (i in 0:100){
+#  homer_v <- c(homer_v, sum(d <= i, na.rm=T))
+#}
+
+ctx_unc_v <- vector()
+#d <- ctx_unc[,c('direct')]
+#d <- ctx_unc[,c('direct', 'orthology')]
+d <- ctx_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_unc_v <- c(ctx_unc_v, sum(d <= i, na.rm=T))
+}
+
+ctx_c_v <- vector()
+#d <- ctx_c[,c('direct')]
+#d <- ctx_c[,c('direct', 'orthology')]
+d <- ctx_c
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_c_v <- c(ctx_c_v, sum(d <= i, na.rm=T))
+}
+
+dem_unc_v <- vector()
+#d <- dem_unc[,c('direct')]
+#d <- dem_unc[,c('direct', 'orthology')]
+d <- dem_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_unc_v <- c(dem_unc_v, sum(d <= i, na.rm=T))
+}
+
+dem_c_v <- vector()
+#d <- dem_unc[,c('direct')]
+#d <- dem_unc[,c('direct', 'orthology')]
+d <- dem_c
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_c_v <- c(dem_c_v, sum(d <= i, na.rm=T))
+}
+```
+
+
+```{r}
+library(ggplot2)
+position <- 0:100
+df <- as.data.frame(rbind(cbind(position, homer_v, rep('Homer', length(position))),
+                          cbind(position, ctx_unc_v, rep('Ctx unclustered', length(position))),
+                          cbind(position, ctx_c_v, rep('Ctx clustered', length(position))),
+                          cbind(position, dem_unc_v, rep('DEM unclustered', length(position))),
+                          cbind(position, dem_c_v, rep('DEM clustered', length(position)))))
+colnames(df) <- c('Position', 'Rank', 'Method')
+df$Position <- as.numeric(df$Position)
+df$Rank <- as.numeric(df$Rank)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/plots/Motif_benchmark_homer_direct_others_all.pdf')
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Reds')[2:3]
+c2 <- brewer.pal(3, 'Blues')[2:3]
+c3 <- brewer.pal(3, 'Greens')[2:3]
+ggplot(df, aes(x=Position, y=Rank)) +  
+  geom_point(aes(colour = Method)) + 
+  geom_line(aes(colour = Method)) +
+  scale_colour_manual(values = c("Homer"= c3[1], "Ctx unclustered"=c1[1], "Ctx clustered"=c1[2],
+                                  "DEM unclustered"=c2[1], "DEM clustered"=c2[2])) + labs(x = "Rank",
+         y = "Number of hits") +  theme_bw() + theme(text = element_text(size = 20))
+dev.off()
+
+```
+
+```{r}
+#homer_v <- vector()
+#for (i in 0:100){
+#  homer_v <- c(homer_v, sum(homer[,"direct"] <= i, na.rm=T))
+#}
+
+homer_v <- vector()
+d <- homer
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  homer_v <- c(homer_v, sum(d <= i, na.rm=T))
+}
+
+ctx_unc_v <- vector()
+#d <- ctx_unc[,c('direct')]
+#d <- ctx_unc[,c('direct', 'orthology')]
+d <- ctx_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_unc_v <- c(ctx_unc_v, sum(d <= i, na.rm=T))
+}
+
+ctx_c_v <- vector()
+#d <- ctx_c[,c('direct')]
+#d <- ctx_c[,c('direct', 'orthology')]
+d <- ctx_c
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  ctx_c_v <- c(ctx_c_v, sum(d <= i, na.rm=T))
+}
+
+dem_unc_v <- vector()
+#d <- dem_unc[,c('direct')]
+#d <- dem_unc[,c('direct', 'orthology')]
+d <- dem_unc
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_unc_v <- c(dem_unc_v, sum(d <= i, na.rm=T))
+}
+
+dem_c_v <- vector()
+#d <- dem_unc[,c('direct')]
+#d <- dem_unc[,c('direct', 'orthology')]
+d <- dem_c
+d <- apply(d, 1, FUN = min, na.rm=T)
+for (i in 0:100){
+  dem_c_v <- c(dem_c_v, sum(d <= i, na.rm=T))
+}
+```
+
+
+```{r}
+library(ggplot2)
+position <- 0:100
+df <- as.data.frame(rbind(cbind(position, homer_v, rep('Homer', length(position))),
+                          cbind(position, ctx_unc_v, rep('Ctx unclustered', length(position))),
+                          cbind(position, ctx_c_v, rep('Ctx clustered', length(position))),
+                          cbind(position, dem_unc_v, rep('DEM unclustered', length(position))),
+                          cbind(position, dem_c_v, rep('DEM clustered', length(position)))))
+colnames(df) <- c('Position', 'Rank', 'Method')
+df$Position <- as.numeric(df$Position)
+df$Rank <- as.numeric(df$Rank)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/plots/Motif_benchmark_all_all.pdf')
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Reds')[2:3]
+c2 <- brewer.pal(3, 'Blues')[2:3]
+c3 <- brewer.pal(3, 'Greens')[2:3]
+ggplot(df, aes(x=Position, y=Rank)) +  
+  geom_line(aes(colour = Method)) +
+  geom_point(aes(colour = Method)) + 
+  scale_colour_manual(values = c("Homer"= c3[1], "Ctx unclustered"=c1[1], "Ctx clustered"=c1[2],
+                                  "DEM unclustered"=c2[1], "DEM clustered"=c2[2])) + labs(x = "Rank",
+         y = "Number of hits") +  theme_bw() + theme(text = element_text(size = 20))  
+  
+dev.off()
+```
+
+
+### Convert to cluster-buster
+singularity run -B /staging/leuven/stg_00002/, /staging/leuven/res_00001/software/rsat/rsat-core_2020.02.29--py37pl526r36hc99cbb1_0.sif convert-matrix -from jaspar -to transfac -i /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_no_desso_no_factorbook.jaspar -pseudo 1 -multiply 1 -decimals 1 -perm 0 -bg_pseudo 0.01 -return counts -to transfac -o /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_no_desso_no_factorbook.transfac
+done
+
+### Make motif collection with no transfac
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+motif_obj <- subset(x = motif_obj, subset = Collection != 'transfac_pro')
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/metaclusters_no_transfac_pro/'
+dir.create(path)
+out <- split(as.vector(unlist(motif_obj$Motif_name_2)), f = motif_obj$STAMP_RNA_harmony_snn_res_25_clusters)
+for (i in 1:length(out)){
+  if (length(out) > 0){
+    out[[i]] <- paste0('/staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant/',out[[i]], '.cb')
+    write.table(out[[i]], file=paste0(path,'metacluster_',names(out)[i],'.txt'), quote=FALSE, col.names=FALSE, row.names=FALSE)
+  }
+}
+```
+
+cd /staging/leuven/stg_00002/lcb/icistarget/data/motif2tf_project/motif_collections_data/cluster_buster/non_redundant/
+for file in /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/metaclusters_no_transfac_pro/*
+do
+file_name=$(basename $file)
+file_name=${file_name//.txt/} 
+echo ${file_name}
+{ xargs cat < ${file}; } > /staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/RNA_harmony_snn_res_25_clusters/motif_collection_combined_motifs_stamp_and_singlets/singletons_no_trasnfac_pro/${file_name}.cb
+done
+
+
+# Make tSNE figure
+
+```{r}
+cell_data <- motif_obj@meta.data
+gene_umap <- motif_obj@reductions$tsne_harmony@cell.embeddings
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=RNA_harmony_snn_res.25)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") 
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=RNA_harmony_snn_res.25)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") 
+ggsave(filename = paste0(path, 'tSNE_harmony.png'), device='png', bg = "transparent",
+       width=7, height=7)
+```
+# Make cluster tree with motifs
+
+```{r}
+library(motifStack)
+motifs <- importMatrix('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/all_motifs_meme.meme', format='meme')
+#plot(motifs[[1]])
+```
+
+```{r}
+selected_motifs <- paste0(gsub('-', '_', rownames(motif_obj[motif_obj$RNA_harmony_snn_res.25 == 4, ])), '.')
+group <- motif_obj@meta.data[which(motif_obj$RNA_harmony_snn_res.25 == 4), 'STAMP_RNA_harmony_snn_res_25_clusters']
+names(group) <- selected_motifs
+```
+
+```{r, height=50}
+sub_motifs <- motifs[which(names(motifs) %in% selected_motifs)]
+for (i in 1:length(sub_motifs)){
+  print(i)
+  sub_motifs[[i]]$name <- ''
+}
+library(RColorBrewer)
+color <- brewer.pal(10, "Set3")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_stacks/Example4supplfull.pdf', height=15, width=10)
+motifStack(sub_motifs, layout="tree", xaxis=FALSE, yaxis=FALSE, ylab='', ncex=0, trueDist=TRUE, treewidth=1/10)
+dev.off()
+```
+
+```{r}
+colvar <- brewer.pal(5, 'Set1')
+names(colvar) <- unique(group)
+color <- colvar[group]
+names(color) <- selected_motifs
+names(color) <- gsub('\\.', '_', names(color))
+```
+
+```{r}
+## use matalign to calculate the distances of motifs
+pfms <- sub_motifs
+d <- MotIV::motifDistances(lapply(pfms, pfm2pwm), cc='SSD', align = 'SWA', top=5)
+hc <- MotIV::motifHclust(d, method='centroid')
+## convert the hclust to phylog object
+library(ade4)
+phylog <- ade4::hclust2phylog(hc)
+## alignment of the pfms, this step will make the motif logos occupy 
+## more space. Users can skip this alignment to see the difference.
+pfmsAligned <- DNAmotifAlignment(pfms)
+## plot motifs
+motifPiles(phylog=phylog, pfms=pfmsAligned, 
+            col.tree=color[names(phylog$leaves)],
+            col.leaves=color[names(phylog$leaves)],
+            plotIndex=TRUE)
+```
+# Cluser 4
+
+```{r}
+myTree <- ape::read.tree(text='((((taipale__SOX10_full_:0.000000,(taipale__SOX8_DBD_AA:0.000000,taipale__SOX9_full_A:0.000000):0.000000):0.000000,(taipale__SOX21_DBD_A:0.000000,taipale__SOX7_full_A:0.000000):0.000000):0.000630,(taipale__SRY_DBD_AAC:0.000000,(taipale_cyt_meth__SO:0.000000,taipale_cyt_meth__SO:0.000000):0.000000):0.000630):1.379186,((((bergman__dsx:0.000763,((cisbp__M00205:0.000008,cisbp__M00210:0.000008):0.000028,(jaspar__MA0084.1:0.000008,transfac_public__M00:0.000008):0.000028):0.000726):0.008328,((((cisbp__M00213:0.000036,(((dbtfbs__mm_NANOG_E14:0.000003,jaspar__MA1152.1:0.000003):0.000003,(homer__CCATTGTTNY_So:0.000001,swissregulon__hs__SO:0.000001):0.000005):0.000008,(homer__CCWTTGTYYB_So:0.000007,jaspar__MA0515.1:0.000007):0.000007):0.000022):0.000079,(hocomoco__SOX9_MOUSE:0.000021,transfac_pro__M07127:0.000021):0.000094):0.000941,((((((hocomoco__SOX10_HUMA:0.000000,(hocomoco__SOX2_HUMAN:0.000000,hocomoco__SOX2_MOUSE:0.000000):0.000000):0.000001,(hocomoco__SOX4_HUMAN:0.000000,jaspar__MA0869.2:0.000000):0.000001):0.000001,transfac_pro__M01590:0.000002):0.000001,(hocomoco__SOX10_MOUS:0.000001,((hocomoco__SOX3_HUMAN:0.000000,hocomoco__SOX3_MOUSE:0.000000):0.000000,transfac_pro__M09709:0.000000):0.000000):0.000002):0.000006,(jaspar__MA0867.2:0.000002,taipale_cyt_meth__SO:0.000002):0.000007):0.000040,((((jaspar__MA0078.2:0.000000,transfac_public__M00:0.000000):0.000001,swissregulon__hs__SO:0.000001):0.000000,((swissregulon__hs__SO:0.000000,transfac_pro__M02795:0.000000):0.000000,(transfac_pro__M03886:0.000000,transfac_pro__M07308:0.000000):0.000000):0.000001):0.000012,jaspar__MA0445.1:0.000013):0.000036):0.001007):0.002475,(taipale__SOX9_DBD_NA:0.000108,taipale_cyt_meth__SO:0.000108):0.003422):0.005560):0.082084,(((cisbp__M01026:0.000021,transfac_pro__M01308:0.000021):0.000040,swissregulon__hs__SO:0.000061):0.000112,(((((cisbp__M08041:0.000000,transfac_pro__M02246:0.000000):0.000000,(hocomoco__SOX2_HUMAN:0.000000,transfac_pro__M01247:0.000000):0.000000):0.000000,transfac_pro__M04837:0.000000):0.000001,transfac_pro__M07432:0.000002):0.000037,swissregulon__hs__SO:0.000039):0.000134):0.091001):0.104484,nitta__D_TTCCCC20NCC:0.195658):1.184159):1.379817;')
+```
+
+```{r}
+labels <- vector() 
+y <- selected_motifs
+for (x in myTree$tip.label){
+  t <- y[grep(x, y)[1]]
+  labels <- c(labels, t)
+  y <- y[-which(y == t)]
+}
+```
+
+```{r}
+labels[grep('swissregulon', labels)] <- c("swissregulon__hs__SOX18.", "swissregulon__hs__SOX4.", "swissregulon__hs__SOX6.", "swissregulon__hs__SOX2.", "swissregulon__hs__SOX3.")
+myTree$tip.label <- labels
+```
+
+```{r}
+dendrogram <- chronos(myTree)
+x <- as.hclust(dendrogram)
+## convert the hclust to phylog object
+library(ade4)
+phylog <- ade4::hclust2phylog(x)
+names(phylog$leaves) <- gsub('\\.', '_', labels)
+y <- sub_motifs
+names(y) <- gsub('\\.', '_', names(y))
+for (i in 1:length(y)){
+  y[[i]]$name <- names(y)[i]
+}
+pfmsAligned <- DNAmotifAlignment(y)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_stacks/Example4supplfull_real_STAMP_tree.pdf', height=15, width=10)
+motifPiles(phylog=phylog, pfms=pfmsAligned,
+            col.tree=color[names(phylog$leaves)],
+            col.leaves=NULL, labels.leaves=rep('', 55))
+dev.off()
+```
+
+# Create motif enrichment tables
+
+
+```{r}
+addLogo <- function(motifEnrDT, addHTML=TRUE, dbVersion="v10", motifCol="motif")
+{
+  isNA <- which(motifEnrDT[[motifCol]]=="")
+  logos <- paste("https://motifcollections.aertslab.org/",
+                dbVersion,"/logos/",
+                motifEnrDT[[motifCol]],".png", sep="")
+  
+  if(addHTML)
+  {
+    logos <- paste('<img src="', logos,
+                '" height="52" alt="',
+                motifEnrDT[[motifCol]], '"></img>', sep="")
+  }
+  logos[isNA] <- ""
+  
+  data.table::data.table(logo=logos, motifEnrDT)
+}
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+clusters <- unique(colnames(motif_obj@meta.data)[c(grep('harmony_snn_res_25', colnames(motif_obj@meta.data)), grep('harmony_snn_res.25$', colnames(motif_obj@meta.data)))])
+html_table <- motif_obj@meta.data[,c('Motif_name_2', 'Collection', 'IC', 'Length', clusters)]
+colnames(html_table)[1] <- 'Motif_name'
+colnames(html_table)[5] <- 'Cluster'
+html_table <- html_table[,c(1:5)]
+
+motif_metadata <- read.table('/staging/leuven/stg_00002/lcb/ghuls/tmp/tomtom_v10_2022/best_motifs_annotation_after_tomtom.tsv', sep='\t')
+rownames(motif_metadata) <- motif_metadata[,4]
+motif_metadata <- motif_metadata[-1,]
+colnames(motif_metadata) <- c('Collection', 'Version', 'Motif_name', 'Motif_name_2', 'TF', 'IC', 'Length', 'Avg_row_sum', 'Hd5_hash', 'Motif_collection_priority', 'PFM_or_PPM', 'Motif_id_priority', 'Num_similar_motifs', 'Similar_motifs', 'is_known_tfdimer_or_taipale_dimer')
+singlets <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/singlets.txt')[,1]
+dimers <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/dimers.txt')[,1]
+extra <- c(singlets, dimers)
+extra <- gsub('.cb', '', extra)
+motif_metadata_extra <- motif_metadata[extra,c('Motif_name_2', 'Collection', 'IC', 'Length')]
+colnames(motif_metadata_extra)[1] <- 'Motif_name'
+motif_metadata_extra$Cluster <- rep('', length(extra))
+html_table <- rbind(html_table, motif_metadata_extra)
+head(motif_metadata_extra)
+```
+
+```{r}
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotations/annotations_hs_motifs-v10-nr.more_orthology.hgnc-m0.00001-o0.0.tsv', sep='\t', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Human_', colnames(annotations))
+html_table_merged <- merge(html_table, annotations, by=0, all.x=TRUE) 
+sel <- c("Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+rownames(html_table_merged) <- html_table_merged$Motif_name
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotations/annotations_mm_motifs-v10-nr.more_orthology.mgi-m0.00001-o0.0.tsv', sep='\t', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Mouse_', colnames(annotations))
+html_table_merged <- merge(html_table_merged, annotations, by=0, all.x=TRUE) 
+sel <- c("Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+rownames(html_table_merged) <- html_table_merged$Motif_name
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotations/annotations_dm_motifs-v10-nr.more_orthology.flybase-m0.00001-o0.0.tsv', sep='\t', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Fly_', colnames(annotations))
+html_table_merged <- merge(html_table_merged, annotations, by=0, all.x=TRUE) 
+sel <- c("Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot", "Fly_Direct_annot", "Fly_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+rownames(html_table_merged) <- html_table_merged$Motif_name
+saveRDS(html_table_merged, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Html_unclustered.RDS')
+
+html_table_merged <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Html_unclustered.RDS')
+head(html_table_merged)
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_clust_table.tsv', sep=',', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Cluster_Human_', colnames(annotations))
+annotations <- annotations[grep('metacluster', rownames(annotations)),]
+annotations$Cluster <- gsub('metacluster_', '', rownames(annotations))
+html_table_merged <- merge(html_table_merged, annotations, by='Cluster', all.x=TRUE) 
+sel <- c("Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot", "Fly_Direct_annot", "Fly_Orthology_annot", "Cluster_Human_Direct_annot", "Cluster_Human_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+head(html_table_merged)
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_clust_table.tsv', sep=',', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Cluster_Mouse_', colnames(annotations))
+annotations <- annotations[grep('metacluster', rownames(annotations)),]
+annotations$Cluster <- gsub('metacluster_', '', rownames(annotations))
+html_table_merged <- merge(html_table_merged, annotations, by='Cluster', all.x=TRUE) 
+sel <- c("Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot", "Fly_Direct_annot", "Fly_Orthology_annot", "Cluster_Human_Direct_annot", "Cluster_Human_Orthology_annot", "Cluster_Mouse_Direct_annot", "Cluster_Mouse_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+head(html_table_merged)
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_clust_table.tsv', sep=',', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Cluster_Fly_', colnames(annotations))
+annotations <- annotations[grep('metacluster', rownames(annotations)),]
+annotations$Cluster <- gsub('metacluster_', '', rownames(annotations))
+html_table_merged <- merge(html_table_merged, annotations, by='Cluster', all.x=TRUE) 
+sel <- c("Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot", "Fly_Direct_annot", "Fly_Orthology_annot", "Cluster_Human_Direct_annot", "Cluster_Human_Orthology_annot", "Cluster_Mouse_Direct_annot", "Cluster_Mouse_Orthology_annot", "Cluster_Fly_Direct_annot", "Cluster_Fly_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+head(html_table_merged)
+
+html_table_merged <- addLogo(html_table_merged, motifCol = "Motif_name")
+
+saveRDS(html_table_merged, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection.RDS')
+
+library(DT)
+library(data.table)
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection.html'), selfcontained=TRUE) 
+
+library(DT)
+library(data.table)
+html_table_merged_human <- html_table_merged[,c("logo","Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot",  "Cluster_Human_Direct_annot", "Cluster_Human_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_human,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_human.html'), selfcontained=TRUE) 
+
+library(DT)
+library(data.table)
+html_table_merged_mouse <- html_table_merged[,c('logo',"Motif_name", 'Cluster',  "Mouse_Direct_annot", "Mouse_Orthology_annot",  "Cluster_Mouse_Direct_annot", "Cluster_Mouse_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_mouse,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_mouse.html'), selfcontained=TRUE) 
+
+library(DT)
+library(data.table)
+html_table_merged_fly <- html_table_merged[,c('logo',"Motif_name", 'Cluster',  "Fly_Direct_annot", "Fly_Orthology_annot",  "Cluster_Fly_Direct_annot", "Cluster_Fly_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_fly,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_fly.html'), selfcontained=TRUE) 
+
+write.table(html_table_merged, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection.tsv', quote=FALSE, sep='\t', row.names = FALSE)
+```
+
+
+```{r}
+
+library(DT)
+library(data.table)
+html_table_merged_human <- html_table_merged[,c("logo","Motif_name", 'Cluster',  "Human_Direct_annot", "Human_Orthology_annot",  "Cluster_Human_Direct_annot", "Cluster_Human_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_human,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycistarget/docs/build/html/_static/Motif_collection_human.html'), selfcontained=TRUE) 
+```
+
+```{r}
+library(DT)
+library(data.table)
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=25))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycistarget/docs/build/html/_static/Motif_collection.html'), selfcontained=TRUE) 
+```
+
+# Table with only clustered motifs
+
+```{r}
+addLogo <- function(motifEnrDT, addHTML=TRUE, dbVersion="v10", motifCol="motif")
+{
+  isNA <- which(motifEnrDT[[motifCol]]=="")
+  logos <- paste("https://motifcollections.aertslab.org/",
+                dbVersion,"/logos/",
+                motifEnrDT[[motifCol]],".png", sep="")
+  
+  if(addHTML)
+  {
+    logos <- paste('<img src="', logos,
+                '" height="52" alt="',
+                motifEnrDT[[motifCol]], '"></img>', sep="")
+  }
+  logos[isNA] <- ""
+  
+  data.table::data.table(logo=logos, motifEnrDT)
+}
+```
+
+```{r}
+motif_obj <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/Seurat_objects/motif_obj_all_motifs_simple_normalization.RDS')
+```
+
+```{r}
+clusters <- unique(colnames(motif_obj@meta.data)[c(grep('harmony_snn_res_25', colnames(motif_obj@meta.data)), grep('harmony_snn_res.25$', colnames(motif_obj@meta.data)))])
+html_table <- motif_obj@meta.data[,c('Motif_name_2', 'Collection', 'IC', 'Length', clusters)]
+colnames(html_table)[1] <- 'Motif_name'
+colnames(html_table)[5] <- 'Cluster'
+html_table <- html_table[,c(1:5)]
+
+motif_metadata <- read.table('/staging/leuven/stg_00002/lcb/ghuls/tmp/tomtom_v10_2022/best_motifs_annotation_after_tomtom.tsv', sep='\t')
+rownames(motif_metadata) <- motif_metadata[,4]
+motif_metadata <- motif_metadata[-1,]
+colnames(motif_metadata) <- c('Collection', 'Version', 'Motif_name', 'Motif_name_2', 'TF', 'IC', 'Length', 'Avg_row_sum', 'Hd5_hash', 'Motif_collection_priority', 'PFM_or_PPM', 'Motif_id_priority', 'Num_similar_motifs', 'Similar_motifs', 'is_known_tfdimer_or_taipale_dimer')
+singlets <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/singlets.txt')[,1]
+dimers <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_txt/dimers.txt')[,1]
+extra <- c(singlets, dimers)
+extra <- gsub('.cb', '', extra)
+extra <- unique(c(extra, paste0('metacluster_', html_table$Cluster)))
+extra <- as.data.frame(extra)
+colnames(extra) <- 'Motif_name'
+rownames(extra) <- extra$Motif_name
+```
+
+```{r}
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.hgnc-mm0.00001-o0.0_clust_table.tsv', sep=',', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Human_', colnames(annotations))
+html_table_merged <- merge(extra, annotations, by=0, all.x=TRUE) 
+sel <- c("Motif_name",  "Human_Direct_annot", "Human_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+head(html_table_merged)
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.mgi-mm0.00001-o0.0_clust_table.tsv', sep=',', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Mouse_', colnames(annotations))
+rownames(html_table_merged) <- html_table_merged[,1]
+html_table_merged <- merge(html_table_merged, annotations, by=0, all.x=TRUE) 
+sel <- c("Motif_name",  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+head(html_table_merged)
+
+annotations <- read.table('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/annotated_motifs/motifs-v10-nr.more_orthology.flybase-mm0.00001-o0.0_clust_table.tsv', sep=',', header=TRUE)
+rownames(annotations) <- annotations[,1]
+annotations <- annotations[,-1]
+colnames(annotations) <- paste0('Fly_', colnames(annotations))
+rownames(html_table_merged) <- html_table_merged[,1]
+html_table_merged <- merge(html_table_merged, annotations, by=0, all.x=TRUE) 
+sel <- c("Motif_name",  "Human_Direct_annot", "Human_Orthology_annot", "Mouse_Direct_annot", "Mouse_Orthology_annot", "Fly_Direct_annot", "Fly_Orthology_annot")
+html_table_merged <- html_table_merged[,sel]
+head(html_table_merged)
+```
+
+```{r}
+html_table_merged <- addLogo(html_table_merged, motifCol = "Motif_name", dbVersion="v10nr_clust")
+library(DT)
+library(data.table)
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_collapsed.html'), selfcontained=TRUE) 
+write.table(html_table_merged, file='/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_collapsed.tsv', quote=FALSE, sep='\t', row.names = FALSE)
+```
+
+```{r}
+library(DT)
+library(data.table)
+html_table_merged_human <- html_table_merged[,c("logo","Motif_name",  "Human_Direct_annot", "Human_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_human,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_collapsed_human.html'), selfcontained=TRUE) 
+
+library(DT)
+library(data.table)
+html_table_merged_mouse <- html_table_merged[,c('logo',"Motif_name",  "Mouse_Direct_annot", "Mouse_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_mouse,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_collapsed_mouse.html'), selfcontained=TRUE) 
+
+library(DT)
+library(data.table)
+html_table_merged_fly <- html_table_merged[,c('logo',"Motif_name",   "Fly_Direct_annot", "Fly_Orthology_annot")]
+motifEnrichmentTable_wGenes_wLogo_widget<-datatable(html_table_merged_fly,
+                                    escape = FALSE, # To show the logo
+                                   filter="top", options=list(pageLength=100))
+# Save the motif enrichment to HTML
+saveWidget(motifEnrichmentTable_wGenes_wLogo_widget, file=paste0('/staging/leuven/stg_00002/lcb/cbravo/cluster_motif_collection_V10_no_desso_no_factorbook/motif_collection_html/Motif_collection_collapsed_fly.html'), selfcontained=TRUE) 
+```

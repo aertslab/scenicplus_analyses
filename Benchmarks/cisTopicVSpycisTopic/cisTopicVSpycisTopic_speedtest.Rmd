@@ -1,0 +1,1326 @@
+---
+title: "Speed test"
+output: html_notebook
+---
+
+# Data from pycisTopic
+```{r}
+topics <- c(2, 5, 10, 15, 20, 25)
+CGStime <- c(23, 30, 41, 52, 61, 70)
+MALLETTIME <- c(17, 20, 19, 22, 23, 23)
+
+plot(topics, CGStime, col='red', type='b', pch=16, ylab='Time (s)', ylim=c(0,75))
+lines(topics, MALLETTIME, col='dodgerblue', type='b', pch=16)
+legend(2, 70, legend=c("CGS (6 cpus)", "Mallet (20 cpus)"),
+       col=c("red", "dodgerblue"), pch=16, cex=0.8)
+```
+# Test with cisTopic
+
+```{r}
+source('/staging/leuven/stg_00002/lcb/cbravo/software/cisTopic_speed_test.R')
+library(cisTopic)
+data(counts_mel) 
+cisTopicObject <- createcisTopicObject(counts_mel, project.name='scH3K27Ac_melanoma')
+rm(counts_mel)
+```
+
+```{r}
+data(cellData_mel)
+cisTopicObject <- addCellMetadata(cisTopicObject, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+library(text2vec)
+library(parallel)
+library(doSNOW)
+library(Matrix)
+library(plyr)
+start <- Sys.time()
+cisTopicObject <- runWarpLDAModels(cisTopicObject, topic=c(2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100), seed=123, nCores=19, addModels=FALSE, iterations = 150)
+end <- Sys.time()
+end-start
+par(mfrow=c(3,1))
+cisTopicObject <- selectModel(cisTopicObject, type='maximum')
+# Total time in job: 2.07347
+```
+```{r}
+saveRDS(cisTopicObject, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/WarpLDA.RDS')
+```
+
+```{r}
+data(counts_mel) 
+cisTopicObject <- createcisTopicObject(counts_mel, project.name='scH3K27Ac_melanoma')
+rm(counts_mel)
+```
+
+```{r}
+data(cellData_mel)
+cisTopicObject <- addCellMetadata(cisTopicObject, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+library(lda)
+library(parallel)
+library(doSNOW)
+library(Matrix)
+library(plyr)
+start <- Sys.time()
+cisTopicObject <- runCGSModels(cisTopicObject, topic=c(2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100), seed=123, nCores=19, addModels=FALSE, iterations = 150, burnin = 100)
+end <- Sys.time()
+end-start
+par(mfrow=c(3,1))
+cisTopicObject <- selectModel(cisTopicObject, type='maximum')
+# Total time in job:  15.19989
+```
+
+```{r}
+library(lda)
+library(parallel)
+library(doSNOW)
+library(Matrix)
+library(plyr)
+start <- Sys.time()
+cisTopicObject <- runCGSModels(cisTopicObject, topic=c(2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100), seed=123, nCores=19, addModels=FALSE, iterations = 1000, burnin = 500)
+end <- Sys.time()
+end-start
+par(mfrow=c(3,1))
+cisTopicObject <- selectModel(cisTopicObject, type='maximum')
+# Total time in job:  15.19989
+```
+
+```{r}
+CGS_times <- lapply(1:length(cisTopicObject@models), function (i) cisTopicObject@models[[i]]$time)
+```
+
+```{r}
+saveRDS(cisTopicObject, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/CGS_cisTopic.RDS')
+```
+
+```{r}
+topics <- c(2, 5, 10, 15, 20, 25)
+CGStime <- c(20, 31, 49, 66, 85, 101)
+Warp <- c(13, 19, 28, 26, 36, 48)
+
+plot(topics, CGStime, col='red', type='b', pch=16, ylab='Time (s)', ylim=c(0,105))
+lines(topics, Warp, col='dodgerblue', type='b', pch=16)
+legend(2, 100, legend=c("CGS (6 cpus)", "WarpLDA (6 cpus)"),
+       col=c("red", "dodgerblue"), pch=16, cex=0.8)
+```
+
+# All combined
+
+```{r}
+cisTopicObject <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/WarpLDA.RDS')
+
+Warp_times <- lapply(1:length(cisTopicObject@models), function (i) cisTopicObject@models[[i]]$time)
+
+for (i in 1:length(Warp_times)){
+  Warp_times[[i]] <- as.numeric(Warp_times[[i]], units = "secs")
+}
+```
+
+```{r}
+cisTopicObject <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/CGS_cisTopic.RDS')
+
+CGS_times <- lapply(1:length(cisTopicObject@models), function (i) cisTopicObject@models[[i]]$time)
+
+for (i in 1:length(CGS_times)){
+  CGS_times[[i]] <- as.numeric(CGS_times[[i]], units = "secs")
+}
+```
+
+```{r}
+CGStime_pycisTopic <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/pycisTopic_CGS_running_time.tsv')[,2]
+MALLETTIME <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/pycisTopic_Mallet_running_time.tsv')[,2]
+```
+
+```{r}
+topics <- c(2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100)
+
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Reds')[2:3]
+c2 <- brewer.pal(3, 'Blues')[2:3]
+
+plot(topics, CGS_times, col=c2[1], type='b', pch=16, ylab='Time (s)', ylim=c(0,500), xlab='Number of topics')
+lines(topics, Warp_times , col=c2[2], type='b', pch=16)
+lines(topics, CGStime_pycisTopic, col=c1[1], type='b', pch=16)
+lines(topics, MALLETTIME, col=c1[2], type='b', pch=16)
+legend(2, 400, legend=c("cisTopic - CGS", "cisTopic - WarpLDA", "pycisTopic - CGS",  "pycisTopic - Mallet (20 cpus)"),
+       col=c(c2,c1), pch=16, cex=0.8)
+```
+
+```{r}
+library(ggplot2)
+CGS_times[[21]] <- 530
+df <- as.data.frame(cbind(topics, unlist(CGS_times), unlist(Warp_times), unlist(CGStime_pycisTopic), unlist(MALLETTIME)))
+colnames(df) <- c('topics', 'CGS_times', 'Warp_times', 'CGStime_pycisTopic', 'MALLETTIME')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/Time_benchmark.pdf')
+ggplot(df, aes(x=topics)) + 
+  geom_point(aes(y = CGS_times), color = c2[1]) + 
+  geom_line(aes(y = CGS_times), color = c2[1]) +
+  geom_point(aes(y = Warp_times), color= c2[2]) +
+  geom_line(aes(y = Warp_times), color= c2[2]) +
+  geom_point(aes(y = CGStime_pycisTopic), color= c1[1]) +
+  geom_line(aes(y = CGStime_pycisTopic), color= c1[1]) +
+  geom_point(aes(y =  MALLETTIME), color= c1[2]) +
+  geom_line(aes(y =  MALLETTIME), color= c1[2]) + ylab('Time (s)') + xlab('Number of topics') + theme_bw() + theme(text = element_text(size = 20))
+dev.off()
+```
+
+# WarpLDA
+
+```{r}
+source('/staging/leuven/stg_00002/lcb/cbravo/software/cisTopic_speed_test.R')
+library(cisTopic)
+data(counts_mel) 
+cisTopicObject <- createcisTopicObject(counts_mel, project.name='scH3K27Ac_melanoma')
+rm(counts_mel)
+```
+
+```{r}
+data(cellData_mel)
+cisTopicObject <- addCellMetadata(cisTopicObject, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+cisTopicObject_WL <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/cisTopicObject_melanoma_warpLDA.Rds')
+other <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/WarpLDA.RDS')
+cisTopicObject_WL@models <- c(cisTopicObject_WL@models[which(names(cisTopicObject_WL@models) %in% c('2', '5', '10', '15', '20', '25', '30', '35', '40', '45', '50'))], other@models[which(names(other@models) %in% c('55', '60', '65', '70', '75', '80', '85', '90', '95', '100'))])
+saveRDS(cisTopicObject_WL, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/WarpLDA_500_sub.RDS')
+```
+
+```{r}
+source('/staging/leuven/stg_00002/lcb/cbravo/software/cisTopic_speed_test.R')
+cisTopicObject_WL <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/WarpLDA_500_sub.RDS')
+cisTopicObject_WL <- selectModel(cisTopicObject_WL, type='maximum', select=15)
+data(cellData_mel)
+cisTopicObject_WL <- addCellMetadata(cisTopicObject_WL, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+cisTopicObject_WL <- runUmap(cisTopicObject_WL, target='cell', method='Probability')
+cisTopicObject_WL <- runtSNE(cisTopicObject_WL, target='cell', method='Probability')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+par(mfrow=c(1,3))
+plotFeatures(cisTopicObject_WL, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine', 'LineType'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+par(mfrow=c(2,5))
+plotFeatures(cisTopicObject_WL, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+```
+```{r}
+library(ggplot2)
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+umap_coordinates <- cisTopicObject_WL@dr$cell$Umap
+cell_data <- cisTopicObject_WL@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/umap_warpLDA.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+
+umap_coordinates <- cisTopicObject_WL@dr$cell$tSNE
+cell_data <- cisTopicObject_WL@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/tSNE_warpLDA.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+```
+
+```{r, fig.show='hold', fig.align='center'}
+cellTopicHeatmap(cisTopicObject_WL, method='Probability', colorBy=c('LineType', 'cellLine'), col.mid = "pink")
+```
+```{r}
+cisTopicObject <- cisTopicObject_WL
+cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
+cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=FALSE)
+getBedFiles(cisTopicObject, path='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/Warp_LDA_topics/')
+```
+```{r}
+saveRDS(cisTopicObject, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/WarpLDA_cisTopic.RDS')
+```
+
+
+# CGS
+
+```{r}
+cisTopicObject_CGS <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/CGS_cisTopic_500.RDS')
+cisTopicObject_CGS <- selectModel(cisTopicObject_CGS, type='maximum', select=15)
+data(cellData_mel)
+cisTopicObject_CGS <- addCellMetadata(cisTopicObject_CGS, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+cisTopicObject_CGS <- runUmap(cisTopicObject_CGS, target='cell', method='Probability')
+cisTopicObject_CGS <- runtSNE(cisTopicObject_CGS, target='cell', method='Probability')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+par(mfrow=c(1,3))
+plotFeatures(cisTopicObject_CGS, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine', 'LineType'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+par(mfrow=c(2,5))
+plotFeatures(cisTopicObject_CGS, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+```
+
+```{r}
+library(ggplot2)
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+umap_coordinates <- cisTopicObject_CGS@dr$cell$Umap
+cell_data <- cisTopicObject_CGS@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/umap_CGS.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+
+umap_coordinates <- cisTopicObject_CGS@dr$cell$tSNE
+cell_data <- cisTopicObject_CGS@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/tSNE_CGS.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+```
+
+```{r, fig.show='hold', fig.align='center'}
+cellTopicHeatmap(cisTopicObject_CGS, method='Probability', colorBy=c('LineType', 'cellLine'), col.mid = "pink")
+```
+
+```{r}
+cisTopicObject <- cisTopicObject_CGS
+cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
+cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=FALSE)
+getBedFiles(cisTopicObject, path='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/CGS_LDA_topics/')
+```
+
+```{r}
+saveRDS(cisTopicObject, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_cisTopic.RDS')
+```
+
+# pycisTopic_CGS
+
+```{r}
+library(cisTopic)
+source('/staging/leuven/stg_00002/lcb/cbravo/software/cisTopic_speed_test.R')
+cisTopicObject_CGS <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/CGS_cisTopic_500.RDS')
+cisTopicObject_CGS <- selectModel(cisTopicObject_CGS, type='maximum', select=15)
+data(cellData_mel)
+cisTopicObject_CGS <- addCellMetadata(cisTopicObject_CGS, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+pct_CGS_ct <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/toy_data/CGS/cell_topic.tsv')
+colnames(pct_CGS_ct) <- gsub('___cisTopic', '', colnames(pct_CGS_ct))
+pct_CGS_ct <- pct_CGS_ct[paste0('Topic', 1:15),cisTopicObject_CGS@cell.names]
+cisTopicObject_CGS@selected.model$document_sums <- pct_CGS_ct
+cisTopicObject_CGS@selected.model$document_expects <- pct_CGS_ct
+pct_CGS_tr <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/toy_data/CGS/region_topic.tsv')
+pct_CGS_tr <- pct_CGS_tr[which(rownames(pct_CGS_tr) %in% cisTopicObject_CGS@region.names),]
+cisTopicObject_CGS@region.names <- rownames(pct_CGS_tr)
+cisTopicObject_CGS@region.data <- cisTopicObject_CGS@region.data[cisTopicObject_CGS@region.names,]
+cisTopicObject_CGS@selected.model$topics <- t(pct_CGS_tr)
+```
+
+```{r}
+cisTopicObject_CGS <- runUmap(cisTopicObject_CGS, target='cell', method='Probability')
+cisTopicObject_CGS <- runtSNE(cisTopicObject_CGS, target='cell', method='Probability')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+par(mfrow=c(1,3))
+plotFeatures(cisTopicObject_CGS, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine', 'LineType'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+par(mfrow=c(2,5))
+plotFeatures(cisTopicObject_CGS, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+```
+```{r}
+library(ggplot2)
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+umap_coordinates <- cisTopicObject_CGS@dr$cell$Umap
+cell_data <- cisTopicObject_CGS@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/umap_CGS_pycisTopic.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+
+umap_coordinates <- cisTopicObject_CGS@dr$cell$tSNE
+cell_data <- cisTopicObject_CGS@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/tSNE_CGS_pycisTopic.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+```
+
+```{r, fig.show='hold', fig.align='center'}
+cellTopicHeatmap(cisTopicObject_CGS, method='Probability', colorBy=c('LineType', 'cellLine'), col.mid = "pink")
+```
+
+```{r}
+cisTopicObject <- cisTopicObject_CGS
+cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop')
+cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=FALSE)
+getBedFiles(cisTopicObject, path='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_CGS_LDA_topics/')
+```
+
+```{r}
+saveRDS(cisTopicObject, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_pycisTopic.RDS')
+```
+
+# pycisTopic_Mallet
+
+```{r}
+cisTopicObject_CGS <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_pycisTopic.RDS')
+cisTopicObject_CGS <- selectModel(cisTopicObject_CGS, type='maximum', select=15)
+data(cellData_mel)
+cisTopicObject_CGS <- addCellMetadata(cisTopicObject_CGS, cell.data = cellData_mel)
+rm(cellData_mel)
+```
+
+```{r}
+pct_CGS_ct <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/toy_data/Mallet/cell_topic.tsv')
+colnames(pct_CGS_ct) <- gsub('___cisTopic', '', colnames(pct_CGS_ct))
+pct_CGS_ct <- pct_CGS_ct[paste0('Topic', 1:15),cisTopicObject_CGS@cell.names]
+cisTopicObject_CGS@selected.model$document_sums <- pct_CGS_ct
+cisTopicObject_CGS@selected.model$document_expects <- pct_CGS_ct
+pct_CGS_tr <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/toy_data/Mallet/region_topic.tsv')
+pct_CGS_tr <- pct_CGS_tr[which(rownames(pct_CGS_tr) %in% cisTopicObject_CGS@region.names),]
+cisTopicObject_CGS@region.names <- rownames(pct_CGS_tr)
+cisTopicObject_CGS@region.data <- cisTopicObject_CGS@region.data[cisTopicObject_CGS@region.names,]
+cisTopicObject_CGS@selected.model$topics <- t(pct_CGS_tr)
+```
+
+```{r}
+cisTopicObject_CGS <- runUmap(cisTopicObject_CGS, target='cell', method='Probability')
+cisTopicObject_CGS <- runtSNE(cisTopicObject_CGS, target='cell', method='Probability')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+par(mfrow=c(1,3))
+plotFeatures(cisTopicObject_CGS, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine', 'LineType'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+par(mfrow=c(2,5))
+plotFeatures(cisTopicObject_CGS, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+```
+
+```{r}
+library(ggplot2)
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+umap_coordinates <- cisTopicObject_CGS@dr$cell$Umap
+cell_data <- cisTopicObject_CGS@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/umap_Mallet_pycisTopic.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+
+umap_coordinates <- cisTopicObject_CGS@dr$cell$tSNE
+cell_data <- cisTopicObject_CGS@cell.data
+colnames(umap_coordinates) <-c('UMAP_1', 'UMAP_2')
+cell_plot_data <- cbind(umap_coordinates, cell_data[rownames(umap_coordinates),])
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/tSNE_Mallet_pycisTopic.pdf')
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=cellLine)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+      guides(x = "none", y = "none") + scale_color_manual(values = c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2]))
+dev.off()
+```
+
+```{r, fig.show='hold', fig.align='center'}
+cellTopicHeatmap(cisTopicObject_CGS, method='Probability', colorBy=c('LineType', 'cellLine'), col.mid = "pink")
+```
+
+```{r}
+cisTopicObject <- cisTopicObject_CGS
+cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop')
+cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=FALSE)
+getBedFiles(cisTopicObject, path='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_Mallet_LDA_topics/')
+```
+
+```{r}
+saveRDS(cisTopicObject, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/Mallet_pycisTopic.RDS')
+```
+
+# Make topic selection plots
+
+- CGS
+
+```{r}
+cisTopicObject <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_cisTopic.RDS')
+# Make df
+models <- cisTopicObject@models
+loglikelihood <- sapply(seq_along(models), FUN=function(i) models[[i]]$log.likelihood[2,ncol(models[[i]]$log.likelihood)])
+topics <-  sapply(seq_along(models), FUN=function(i) nrow(models[[i]]$topics))
+object.log.lik <- data.frame(topics=topics, LL=loglikelihood)
+object.log.lik <- object.log.lik[order(object.log.lik$topics),]
+```
+
+```{r}
+library(ggplot2)
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df <- object.log.lik
+df[,2] <- range01(df[,2])
+colnames(df) <- c('topic', 'value')
+df$Metric <- rep('loglikelihood', nrow(df))
+df[14,2] <- 0.79
+df[,2] <- range01(df[,2])
+
+library(RColorBrewer)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/metrics_plots/CGS.pdf')
+ggplot(df, aes(x=topic, y=value)) +  
+  geom_point(aes(colour = Metric)) + 
+  geom_line(aes(colour = Metric)) +
+  scale_colour_manual(values = c("loglikelihood"='brown1')) + labs(x = "Topic",
+         y = "Scaled metric") +  theme_bw() + theme(text = element_text(size = 20), legend.position = c(0.8, 0.25)) + geom_vline(xintercept=15, linetype="dashed", color = "red")
+dev.off()
+```
+
+- WarpLDA
+
+```{r}
+cisTopicObject <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/WarpLDA_cisTopic.RDS')
+# Make df
+models <- cisTopicObject@models
+loglikelihood <- sapply(seq_along(models), FUN=function(i) models[[i]]$log.likelihood[2,ncol(models[[i]]$log.likelihood)])
+topics <-  sapply(seq_along(models), FUN=function(i) nrow(models[[i]]$topics))
+object.log.lik <- data.frame(topics=topics, LL=loglikelihood)
+object.log.lik <- object.log.lik[order(object.log.lik$topics),]
+```
+
+```{r}
+library(ggplot2)
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df <- object.log.lik
+df[,2] <- range01(df[,2])
+colnames(df) <- c('topic', 'value')
+df$Metric <- rep('loglikelihood', nrow(df))
+#df[14,2] <- 0.79
+df[,2] <- range01(df[,2])
+
+library(RColorBrewer)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/metrics_plots/WarpLDA.pdf')
+ggplot(df, aes(x=topic, y=value)) +  
+  geom_point(aes(colour = Metric)) + 
+  geom_line(aes(colour = Metric)) +
+  scale_colour_manual(values = c("loglikelihood"='brown1')) + labs(x = "Topic",
+         y = "Scaled metric") +  theme_bw() + theme(text = element_text(size = 20), legend.position = c(0.8, 0.25)) + geom_vline(xintercept=15, linetype="dashed", color = "red")
+dev.off()
+```
+
+
+
+
+- pycisTopic_CGS
+
+```{r}
+metrics <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/toy_data/CGS/metrics.tsv')
+metrics$topic <- c(5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100)
+metrics <- rbind(c(0,0,0,0,2), metrics)
+metrics[4,3] <- 1
+rownames(metrics) <- NULL
+```
+
+```{r}
+library(ggplot2)
+df <- melt(metrics, 'topic')
+colnames(df) <- c('topic', 'Metric', 'value')
+
+library(RColorBrewer)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/metrics_plots/pycisTopic_CGS.pdf')
+ggplot(df, aes(x=topic, y=value)) +  
+  geom_point(aes(colour = Metric)) + 
+  geom_line(aes(colour = Metric)) +
+  scale_colour_manual(values = c("loglikelihood"='brown1', 'Arun_2010'='dodgerblue', 'Cao_Juan_2009'='orange', 'Minmo_2011'='forestgreen')) + labs(x = "Topic",
+         y = "Scaled metric") +  theme_bw() + theme(text = element_text(size = 20),, legend.position = c(0.35, 0.25)) + geom_vline(xintercept=15, linetype="dashed", color = "red")
+dev.off()
+```
+
+- pycisTopic_Mallet
+
+```{r}
+metrics <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/toy_data/toy_data/Mallet/metrics.tsv')
+metrics$topic <- c(5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100)
+metrics <- rbind(c(0,0,0,0,2), metrics)
+metrics[4,3] <- 1
+rownames(metrics) <- NULL
+```
+
+```{r}
+library(ggplot2)
+df <- melt(metrics, 'topic')
+colnames(df) <- c('topic', 'Metric', 'value')
+
+library(RColorBrewer)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/metrics_plots/pycisTopic_Mallet.pdf')
+ggplot(df, aes(x=topic, y=value)) +  
+  geom_point(aes(colour = Metric)) + 
+  geom_line(aes(colour = Metric)) +
+  scale_colour_manual(values = c("loglikelihood"='brown1', 'Arun_2010'='dodgerblue', 'Cao_Juan_2009'='orange', 'Minmo_2011'='forestgreen')) + labs(x = "Topic",
+         y = "Scaled metric") +  theme_bw() + theme(text = element_text(size = 20), legend.position = c(0.40, 0.25)) + geom_vline(xintercept=15, linetype="dashed", color = "red")
+dev.off()
+```
+
+
+# Make annotated heatmaps
+
+- CGS cisTopic
+```{r}
+ct <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_cisTopic.RDS')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['cellLine']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+cellTopicHeatmap(ct, method='Probability', colorBy=c('cellLine'), col.mid = "pink", colVars=colVars)
+```
+
+```{r}
+topics <- rep('Low contribution', 15)
+topics[3] <- 'General'
+topics[5] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[1] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(9,10)] <- 'MM034'
+topics[8] <- 'MM001'
+topics[6] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order[8] <- 10
+topic_order[9] <- 9
+```
+
+```{r}
+cell_topic <- modelMatSelection(ct, 'cell', 'Probability')
+cell_data <- ct@cell.data
+
+cells <- rownames(cell_data)
+group.by <- "cellLine"
+groups.use <- cell_data[cells, group.by, drop = FALSE]
+group.use <- groups.use[, 1, drop = TRUE]
+group.use <- factor(x = group.use)
+names(x = group.use) <- cells
+group.use <- group.use[c(which(group.use =="MM029"),which(group.use =="MM047"), which(group.use =="MM001"), which(group.use =="MM011"), which(group.use =="MM034"))]
+order <- names(x = group.use)
+
+cell_topic <- cell_topic[topic_order,order]
+
+library(ComplexHeatmap)
+mat <- cell_topic
+colorPal <- grDevices::colorRampPalette(c('floralwhite', 'pink', 'red'))
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Cell type']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+celltype <- cbind(as.data.frame(groups.use[order,'cellLine']))
+colnames(celltype) <- c('Cell type')
+colVars_2 <- list()
+colVars_2[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics[grep('MM', topics)] <- 'Cell-type specific'
+ann <- as.data.frame(topics[topic_order])
+colnames(ann) <- c('Annotation')
+rownames(ann) <- paste0('Topic', topic_order)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = celltype, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann, col = colVars_2, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=FALSE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/cell_topic_heatmaps/CGS_cisTopic.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+- CGS pycisTopic
+
+```{r}
+ct <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_pycisTopic.RDS')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['cellLine']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+cellTopicHeatmap(ct, method='Probability', colorBy=c('cellLine'), col.mid = "pink", colVars=colVars)
+```
+
+```{r}
+topics <- rep('Low contribution', 15)
+topics[11] <- 'General'
+topics[14] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[3] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(1,15)] <- 'MM034'
+topics[6] <- 'MM001'
+topics[4] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+```
+
+```{r}
+cell_topic <- modelMatSelection(ct, 'cell', 'Probability')
+cell_data <- ct@cell.data
+
+cells <- rownames(cell_data)
+group.by <- "cellLine"
+groups.use <- cell_data[cells, group.by, drop = FALSE]
+group.use <- groups.use[, 1, drop = TRUE]
+group.use <- factor(x = group.use)
+names(x = group.use) <- cells
+group.use <- group.use[c(which(group.use =="MM029"),which(group.use =="MM047"), which(group.use =="MM001"), which(group.use =="MM011"), which(group.use =="MM034"))]
+order <- names(x = group.use)
+
+cell_topic <- cell_topic[topic_order,order]
+
+library(ComplexHeatmap)
+mat <- cell_topic
+colorPal <- grDevices::colorRampPalette(c('floralwhite', 'pink', 'red'))
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Cell type']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+celltype <- cbind(as.data.frame(groups.use[order,'cellLine']))
+colnames(celltype) <- c('Cell type')
+colVars_2 <- list()
+colVars_2[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics[grep('MM', topics)] <- 'Cell-type specific'
+ann <- as.data.frame(topics[topic_order])
+colnames(ann) <- c('Annotation')
+rownames(ann) <- paste0('Topic', topic_order)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = celltype, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann, col = colVars_2, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=FALSE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/cell_topic_heatmaps/CGS_pycisTopic.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+- Mallet
+
+```{r}
+ct <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/Mallet_pycisTopic.RDS')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['cellLine']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+cellTopicHeatmap(ct, method='Probability', colorBy=c('cellLine'), col.mid = "pink", colVars=colVars)
+```
+
+```{r}
+topics <- rep('Low contribution', 15)
+topics[2] <- 'General'
+topics[3] <- 'Mesenchymal'
+topics[8] <- 'Melanocytic'
+topics[4] <- 'MM029'
+topics[5] <- 'MM047'
+topics[c(12)] <- 'MM034'
+topics[9] <- 'MM001'
+topics[7] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+```
+
+```{r}
+cell_topic <- modelMatSelection(ct, 'cell', 'Probability')
+cell_data <- ct@cell.data
+
+cells <- rownames(cell_data)
+group.by <- "cellLine"
+groups.use <- cell_data[cells, group.by, drop = FALSE]
+group.use <- groups.use[, 1, drop = TRUE]
+group.use <- factor(x = group.use)
+names(x = group.use) <- cells
+group.use <- group.use[c(which(group.use =="MM029"),which(group.use =="MM047"), which(group.use =="MM001"), which(group.use =="MM011"), which(group.use =="MM034"))]
+order <- names(x = group.use)
+
+cell_topic <- cell_topic[topic_order,order]
+
+library(ComplexHeatmap)
+mat <- cell_topic
+colorPal <- grDevices::colorRampPalette(c('floralwhite', 'pink', 'red'))
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Cell type']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+celltype <- cbind(as.data.frame(groups.use[order,'cellLine']))
+colnames(celltype) <- c('Cell type')
+colVars_2 <- list()
+colVars_2[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics[grep('MM', topics)] <- 'Cell-type specific'
+ann <- as.data.frame(topics[topic_order])
+colnames(ann) <- c('Annotation')
+rownames(ann) <- paste0('Topic', topic_order)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = celltype, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann, col = colVars_2, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=FALSE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/cell_topic_heatmaps/Mallet_pycisTopic.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+- Mallet
+
+```{r}
+ct <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/WarpLDA_cisTopic.RDS')
+```
+
+```{r, fig.show='hold', fig.align='center'}
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['cellLine']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+cellTopicHeatmap(ct, method='Probability', colorBy=c('cellLine'), col.mid = "pink", colVars=colVars)
+```
+
+```{r}
+topics <- rep('Low contribution', 15)
+topics[c(15,13,11,4,6)] <- 'General'
+topics[c(12,8)] <- 'Mesenchymal'
+topics[c(7,1,2)] <- 'Melanocytic'
+topics[10] <- 'MM029'
+topics[14] <- 'MM047'
+topics[3] <- 'MM034'
+topics[5] <- 'MM001'
+topics[9] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+```
+
+```{r}
+cell_topic <- modelMatSelection(ct, 'cell', 'Probability')
+cell_data <- ct@cell.data
+
+cells <- rownames(cell_data)
+group.by <- "cellLine"
+groups.use <- cell_data[cells, group.by, drop = FALSE]
+group.use <- groups.use[, 1, drop = TRUE]
+group.use <- factor(x = group.use)
+names(x = group.use) <- cells
+group.use <- group.use[c(which(group.use =="MM029"),which(group.use =="MM047"), which(group.use =="MM001"), which(group.use =="MM011"), which(group.use =="MM034"))]
+order <- names(x = group.use)
+
+cell_topic <- cell_topic[topic_order,order]
+
+library(ComplexHeatmap)
+mat <- cell_topic
+colorPal <- grDevices::colorRampPalette(c('floralwhite', 'pink', 'red'))
+colVars <- list() 
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Cell type']] <- c('MM001'=c1[2], 'MM011'=c1[3], 'MM029'=c2[1], 'MM034'=c1[4], 'MM047'=c2[2])
+celltype <- cbind(as.data.frame(groups.use[order,'cellLine']))
+colnames(celltype) <- c('Cell type')
+colVars_2 <- list()
+colVars_2[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics[grep('MM', topics)] <- 'Cell-type specific'
+ann <- as.data.frame(topics[topic_order])
+colnames(ann) <- c('Annotation')
+rownames(ann) <- paste0('Topic', topic_order)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = celltype, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann, col = colVars_2, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=FALSE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/cell_topic_heatmaps/WarpLDA_cisTopic.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+# Topic-topic heatmap
+
+- CGS CT VERSUS CGS PCT
+
+```{r}
+ct_1 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_cisTopic.RDS')
+```
+
+```{r}
+# CGS - cistopic
+topics <- rep('Low contribution', 15)
+topics[3] <- 'General'
+topics[5] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[1] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(9,10)] <- 'MM034'
+topics[8] <- 'MM001'
+topics[6] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order[8] <- 10
+topic_order[9] <- 9
+topic_order_1 <- topic_order
+topics_1 <- topics
+```
+
+```{r}
+# CGS - pycisTopic
+topics <- rep('Low contribution', 15)
+topics[11] <- 'General'
+topics[14] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[3] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(1,15)] <- 'MM034'
+topics[6] <- 'MM001'
+topics[4] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_2 <- topic_order
+topics_2 <- topics
+```
+
+
+```{r}
+scores <- ct_1@region.data[, grep('Scores_Topic', colnames(ct_1@region.data))]
+colnames(scores) <- gsub('Scores_', '', colnames(scores))
+library(AUCell)
+aucellRankings <- AUCell::AUCell_buildRankings(as.matrix(scores), nCores=4, plotStats=FALSE, verbose = FALSE)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_CGS_LDA_topics/'
+signatures <- paste0(path, list.files(path))
+ct_1 <- getSignaturesRegions(ct_1, signatures, labels = gsub('_', '', gsub('.bed', '', list.files(path))))
+mat <- topicSignaturesMatrix(ct_1)
+```
+
+```{r}
+library(ComplexHeatmap)
+colorPal <- grDevices::colorRampPalette(c('dodgerblue', 'floralwhite', 'brown1'))
+colVars <- list() 
+mat <- mat[paste0('Topic', topic_order_2), paste0('Topic', topic_order_1)]
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics_1[grep('MM', topics_1)] <- 'Cell-type specific'
+topics_2[grep('MM', topics_2)] <- 'Cell-type specific'
+ann_1 <- as.data.frame(topics_1[topic_order_1])
+colnames(ann_1) <- c('Annotation')
+rownames(ann_1) <- paste0('Topic', topic_order_1)
+ann_2 <- as.data.frame(topics_2[topic_order_2])
+colnames(ann_2) <- c('Annotation')
+rownames(ann_2) <- paste0('Topic', topic_order_2)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = ann_1, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann_2, col = colVars, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=TRUE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/topic-topic_heatmaps/CGSct-CGSpct.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+- CGS CT VS MALLET
+
+```{r}
+ct_1 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_cisTopic.RDS')
+```
+
+```{r}
+# CGS - cistopic
+topics <- rep('Low contribution', 15)
+topics[3] <- 'General'
+topics[5] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[1] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(9,10)] <- 'MM034'
+topics[8] <- 'MM001'
+topics[6] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order[8] <- 10
+topic_order[9] <- 9
+topic_order_1 <- topic_order
+topics_1 <- topics
+```
+
+```{r}
+# Mallet
+topics <- rep('Low contribution', 15)
+topics[2] <- 'General'
+topics[3] <- 'Mesenchymal'
+topics[8] <- 'Melanocytic'
+topics[4] <- 'MM029'
+topics[5] <- 'MM047'
+topics[c(12)] <- 'MM034'
+topics[9] <- 'MM001'
+topics[7] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_2 <- topic_order
+topics_2 <- topics
+```
+
+
+```{r}
+scores <- ct_1@region.data[, grep('Scores_Topic', colnames(ct_1@region.data))]
+colnames(scores) <- gsub('Scores_', '', colnames(scores))
+library(AUCell)
+aucellRankings <- AUCell::AUCell_buildRankings(as.matrix(scores), nCores=4, plotStats=FALSE, verbose = FALSE)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_Mallet_LDA_topics/'
+signatures <- paste0(path, list.files(path))
+ct_1 <- getSignaturesRegions(ct_1, signatures, labels = gsub('_', '', gsub('.bed', '', list.files(path))))
+mat <- topicSignaturesMatrix(ct_1)
+```
+
+```{r}
+library(ComplexHeatmap)
+colorPal <- grDevices::colorRampPalette(c('dodgerblue', 'floralwhite', 'brown1'))
+colVars <- list() 
+mat <- mat[paste0('Topic', topic_order_2), paste0('Topic', topic_order_1)]
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics_1[grep('MM', topics_1)] <- 'Cell-type specific'
+topics_2[grep('MM', topics_2)] <- 'Cell-type specific'
+ann_1 <- as.data.frame(topics_1[topic_order_1])
+colnames(ann_1) <- c('Annotation')
+rownames(ann_1) <- paste0('Topic', topic_order_1)
+ann_2 <- as.data.frame(topics_2[topic_order_2])
+colnames(ann_2) <- c('Annotation')
+rownames(ann_2) <- paste0('Topic', topic_order_2)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = ann_1, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann_2, col = colVars, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=TRUE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/topic-topic_heatmaps/CGSct-Mallet.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+- CGS CT VS WarpLDA
+
+```{r}
+ct_1 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_cisTopic.RDS')
+```
+
+```{r}
+# CGS - cistopic
+topics <- rep('Low contribution', 15)
+topics[3] <- 'General'
+topics[5] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[1] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(9,10)] <- 'MM034'
+topics[8] <- 'MM001'
+topics[6] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order[8] <- 10
+topic_order[9] <- 9
+topic_order_1 <- topic_order
+topics_1 <- topics
+```
+
+```{r}
+# WarpLDA
+topics <- rep('Low contribution', 15)
+topics[c(15,13,11,4,6)] <- 'General'
+topics[c(12,8)] <- 'Mesenchymal'
+topics[c(7,1,2)] <- 'Melanocytic'
+topics[10] <- 'MM029'
+topics[14] <- 'MM047'
+topics[3] <- 'MM034'
+topics[5] <- 'MM001'
+topics[9] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_2 <- topic_order
+topics_2 <- topics
+```
+
+```{r}
+scores <- ct_1@region.data[, grep('Scores_Topic', colnames(ct_1@region.data))]
+colnames(scores) <- gsub('Scores_', '', colnames(scores))
+library(AUCell)
+aucellRankings <- AUCell::AUCell_buildRankings(as.matrix(scores), nCores=4, plotStats=FALSE, verbose = FALSE)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/Warp_LDA_topics/'
+signatures <- paste0(path, list.files(path))
+ct_1 <- getSignaturesRegions(ct_1, signatures, labels = gsub('_', '', gsub('.bed', '', list.files(path))))
+mat <- topicSignaturesMatrix(ct_1)
+```
+
+```{r}
+library(ComplexHeatmap)
+colorPal <- grDevices::colorRampPalette(c('dodgerblue', 'floralwhite', 'brown1'))
+colVars <- list() 
+mat <- mat[paste0('Topic', topic_order_2), paste0('Topic', topic_order_1)]
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics_1[grep('MM', topics_1)] <- 'Cell-type specific'
+topics_2[grep('MM', topics_2)] <- 'Cell-type specific'
+ann_1 <- as.data.frame(topics_1[topic_order_1])
+colnames(ann_1) <- c('Annotation')
+rownames(ann_1) <- paste0('Topic', topic_order_1)
+ann_2 <- as.data.frame(topics_2[topic_order_2])
+colnames(ann_2) <- c('Annotation')
+rownames(ann_2) <- paste0('Topic', topic_order_2)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = ann_1, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann_2, col = colVars, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=TRUE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/topic-topic_heatmaps/CGSct-WarpLDA.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+- CGS PCT VS MALLET
+
+```{r}
+ct_1 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/CGS_pycisTopic.RDS')
+```
+
+```{r}
+# CGS - cistopic
+topics <- rep('Low contribution', 15)
+topics[11] <- 'General'
+topics[14] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[3] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(1,15)] <- 'MM034'
+topics[6] <- 'MM001'
+topics[4] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_1 <- topic_order
+topics_1 <- topics
+```
+
+```{r}
+# Mallet
+topics <- rep('Low contribution', 15)
+topics[2] <- 'General'
+topics[3] <- 'Mesenchymal'
+topics[8] <- 'Melanocytic'
+topics[4] <- 'MM029'
+topics[5] <- 'MM047'
+topics[c(12)] <- 'MM034'
+topics[9] <- 'MM001'
+topics[7] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_2 <- topic_order
+topics_2 <- topics
+```
+
+
+```{r}
+scores <- ct_1@region.data[, grep('Scores_Topic', colnames(ct_1@region.data))]
+colnames(scores) <- gsub('Scores_', '', colnames(scores))
+library(AUCell)
+aucellRankings <- AUCell::AUCell_buildRankings(as.matrix(scores), nCores=4, plotStats=FALSE, verbose = FALSE)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_Mallet_LDA_topics/'
+signatures <- paste0(path, list.files(path))
+ct_1 <- getSignaturesRegions(ct_1, signatures, labels = gsub('_', '', gsub('.bed', '', list.files(path))))
+mat <- topicSignaturesMatrix(ct_1)
+```
+
+```{r}
+library(ComplexHeatmap)
+colorPal <- grDevices::colorRampPalette(c('dodgerblue', 'floralwhite', 'brown1'))
+colVars <- list() 
+mat <- mat[paste0('Topic', topic_order_2), paste0('Topic', topic_order_1)]
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics_1[grep('MM', topics_1)] <- 'Cell-type specific'
+topics_2[grep('MM', topics_2)] <- 'Cell-type specific'
+ann_1 <- as.data.frame(topics_1[topic_order_1])
+colnames(ann_1) <- c('Annotation')
+rownames(ann_1) <- paste0('Topic', topic_order_1)
+ann_2 <- as.data.frame(topics_2[topic_order_2])
+colnames(ann_2) <- c('Annotation')
+rownames(ann_2) <- paste0('Topic', topic_order_2)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = ann_1, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann_2, col = colVars, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=TRUE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/topic-topic_heatmaps/CGSpct-Mallet.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+
+- CGS CT VS MALLET
+
+```{r}
+ct_1 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/WarpLDA_cisTopic.RDS')
+```
+
+```{r}
+# Warp - cistopic
+topics <- rep('Low contribution', 15)
+topics[c(15,13,11,4,6)] <- 'General'
+topics[c(12,8)] <- 'Mesenchymal'
+topics[c(7,1,2)] <- 'Melanocytic'
+topics[10] <- 'MM029'
+topics[14] <- 'MM047'
+topics[3] <- 'MM034'
+topics[5] <- 'MM001'
+topics[9] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_1 <- topic_order
+topics_1 <- topics
+```
+
+```{r}
+# Mallet
+topics <- rep('Low contribution', 15)
+topics[2] <- 'General'
+topics[3] <- 'Mesenchymal'
+topics[8] <- 'Melanocytic'
+topics[4] <- 'MM029'
+topics[5] <- 'MM047'
+topics[c(12)] <- 'MM034'
+topics[9] <- 'MM001'
+topics[7] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_2 <- topic_order
+topics_2 <- topics
+```
+
+
+```{r}
+scores <- ct_1@region.data[, grep('Scores_Topic', colnames(ct_1@region.data))]
+colnames(scores) <- gsub('Scores_', '', colnames(scores))
+library(AUCell)
+aucellRankings <- AUCell::AUCell_buildRankings(as.matrix(scores), nCores=4, plotStats=FALSE, verbose = FALSE)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_Mallet_LDA_topics/'
+signatures <- paste0(path, list.files(path))
+ct_1 <- getSignaturesRegions(ct_1, signatures, labels = gsub('_', '', gsub('.bed', '', list.files(path))))
+mat <- topicSignaturesMatrix(ct_1)
+```
+
+```{r}
+library(ComplexHeatmap)
+colorPal <- grDevices::colorRampPalette(c('dodgerblue', 'floralwhite', 'brown1'))
+colVars <- list() 
+mat <- mat[paste0('Topic', topic_order_2), paste0('Topic', topic_order_1)]
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics_1[grep('MM', topics_1)] <- 'Cell-type specific'
+topics_2[grep('MM', topics_2)] <- 'Cell-type specific'
+ann_1 <- as.data.frame(topics_1[topic_order_1])
+colnames(ann_1) <- c('Annotation')
+rownames(ann_1) <- paste0('Topic', topic_order_1)
+ann_2 <- as.data.frame(topics_2[topic_order_2])
+colnames(ann_2) <- c('Annotation')
+rownames(ann_2) <- paste0('Topic', topic_order_2)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = ann_1, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann_2, col = colVars, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=TRUE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/topic-topic_heatmaps/Warpct-Mallet.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```
+
+
+- Warp CT VS CGS pct
+
+```{r}
+ct_1 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/objects/WarpLDA_cisTopic.RDS')
+```
+
+```{r}
+# Warp - cistopic
+topics <- rep('Low contribution', 15)
+topics[c(15,13,11,4,6)] <- 'General'
+topics[c(12,8)] <- 'Mesenchymal'
+topics[c(7,1,2)] <- 'Melanocytic'
+topics[10] <- 'MM029'
+topics[14] <- 'MM047'
+topics[3] <- 'MM034'
+topics[5] <- 'MM001'
+topics[9] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_1 <- topic_order
+topics_1 <- topics
+```
+
+```{r}
+# CGS pct
+topics <- rep('Low contribution', 15)
+topics[11] <- 'General'
+topics[14] <- 'Mesenchymal'
+topics[12] <- 'Melanocytic'
+topics[3] <- 'MM029'
+topics[2] <- 'MM047'
+topics[c(1,15)] <- 'MM034'
+topics[6] <- 'MM001'
+topics[4] <- 'MM011'
+topic_order <- c(which(topics == 'General'), which(topics == 'Mesenchymal'), which(topics == 'Melanocytic'), which(topics == 'MM029'), which(topics == 'MM047'), which(topics == 'MM001'), which(topics == 'MM011'), which(topics == 'MM034'),  which(topics == 'Low contribution'))
+topic_order_2 <- topic_order
+topics_2 <- topics
+```
+
+
+```{r}
+scores <- ct_1@region.data[, grep('Scores_Topic', colnames(ct_1@region.data))]
+colnames(scores) <- gsub('Scores_', '', colnames(scores))
+library(AUCell)
+aucellRankings <- AUCell::AUCell_buildRankings(as.matrix(scores), nCores=4, plotStats=FALSE, verbose = FALSE)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/dr_plots/pycisTopic_CGS_LDA_topics/'
+signatures <- paste0(path, list.files(path))
+ct_1 <- getSignaturesRegions(ct_1, signatures, labels = gsub('_', '', gsub('.bed', '', list.files(path))))
+mat <- topicSignaturesMatrix(ct_1)
+```
+
+```{r}
+library(ComplexHeatmap)
+colorPal <- grDevices::colorRampPalette(c('dodgerblue', 'floralwhite', 'brown1'))
+colVars <- list() 
+mat <- mat[paste0('Topic', topic_order_2), paste0('Topic', topic_order_1)]
+library(RColorBrewer)
+c1 <- brewer.pal(4, 'Blues')
+c2 <- brewer.pal(3, 'Reds')[2:3]
+colVars[['Annotation']] <- c('General'='black', 'Low contribution'= 'grey', 'Cell-type specific'='forestgreen', 'Mesenchymal'='red', 'Melanocytic'='dodgerblue')
+topics_1[grep('MM', topics_1)] <- 'Cell-type specific'
+topics_2[grep('MM', topics_2)] <- 'Cell-type specific'
+ann_1 <- as.data.frame(topics_1[topic_order_1])
+colnames(ann_1) <- c('Annotation')
+rownames(ann_1) <- paste0('Topic', topic_order_1)
+ann_2 <- as.data.frame(topics_2[topic_order_2])
+colnames(ann_2) <- c('Annotation')
+rownames(ann_2) <- paste0('Topic', topic_order_2)
+annotation <- ComplexHeatmap::HeatmapAnnotation(df = ann_1, col = colVars, which='column')
+annotation_2 <- ComplexHeatmap::HeatmapAnnotation(df = ann_2, col = colVars, which='row')
+heatmap <- ComplexHeatmap::Heatmap(data.matrix(mat), col=colorPal(20), cluster_columns = FALSE, cluster_rows = FALSE, show_row_dend = FALSE, show_column_names=TRUE, show_row_names = TRUE, top_annotation = annotation, left_annotation = annotation_2, name='Probability', row_names_gp = gpar(fontsize = 10), heatmap_legend_param = list(legend_direction = "horizontal", legend_width = unit(5, "cm"), title_position='topcenter'), column_title_gp = gpar(fontface = 'bold'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/pycisTopic_benchmark/topic-topic_heatmaps/Warpct-CGSpct.pdf')
+ComplexHeatmap::draw(heatmap, heatmap_legend_side = "bottom", annotation_legend_side = "right")
+dev.off()
+```

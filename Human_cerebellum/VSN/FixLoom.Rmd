@@ -1,0 +1,221 @@
+---
+title: "Add Scrublet and annotations to ScoMAP loom file"
+output: html_notebook
+---
+
+
+```{r}
+# Load file
+library(SCopeLoomR)
+file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_brain/output/rna/vsn/add_clusters_scrublet_as_annot/10x_multiome_brain_SCENIC_SCope_output-wAnnot-wDBL.loom'
+loom <- open_loom(file, mode = "r+")
+
+file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_brain/output/rna/vsn/single_sample_scrublet/out/loom/1.0.0.SCope_output.loom'
+scrub_meta_loom <- open_loom(file, mode = "r+")
+```
+
+# Add scrublet metada
+
+```{r}
+scrub <- get_cell_annotation(scrub_meta_loom)
+scrub <- scrub[, grep('scrublet', colnames(scrub))]
+```
+
+```{r}
+clust <- get_clusterings_with_name(loom)
+colnames(clust) <- c('leiden_res0.3', 'leiden_res0.9', 'leiden_res0.6', 'leiden_res1.2')
+```
+
+# Update
+
+```{r}
+GA_METADATA_NAME <- "MetaData"
+update_global_meta_data <- function(
+  loom,
+  meta.data.json
+) {
+  if(is_loom_spec_version_3_or_greater(loom = loom)) {
+    meta_data_json <- as.character(x = meta.data.json)
+  } else {
+    meta_data_json <- compress_gzb64(c = as.character(x = meta.data.json))
+  }
+  update_global_attr(
+    loom = loom,
+    key = GA_METADATA_NAME,
+    value = meta_data_json
+  )
+}
+
+is_loom_spec_version_3_or_greater <- function(loom) {
+  return (get_global_loom_spec_version(loom = loom) >= 3)
+}
+
+GA_LOOM_SPEC_VERSION <- "LOOM_SPEC_VERSION"
+get_global_loom_spec_version <- function(loom) {
+  if(loom$link_exists(name = "attrs")) {
+    loom.spec.version <- loom[["attrs"]][[GA_LOOM_SPEC_VERSION]][]
+    if(loom.spec.version < 3)
+      stop(paste0("Corrupted loom file: expecting LOOM_SPEC_VERSION 3 but it's different (",loom.spec.version,") !"))
+    return (loom.spec.version)
+  } else {
+    # If not exists, add attribute
+    if(GA_LOOM_SPEC_VERSION %in% list.attributes(object = loom)) {
+      loom.spec.version <- h5attr(x=loom, which=GA_LOOM_SPEC_VERSION)
+    } else {
+      tryCatch(
+          {
+            warning("LOOM_SPEC_VERSION attribute not detected. This loom file has probably been generated SCopeLoomR version < 0.6.0. 
+                Adding this attribute to the loom file to follow Loompy standards...")
+            h5attr(x=loom, which=GA_LOOM_SPEC_VERSION) <- "2.0.0"
+            # add_global_loom_spec_version(loom=loom, loom.spec.version=2) # why not this?
+          },
+          error = function(e) {
+            e$message <- paste0("It was not possible to update the attribute. Maybe the file is open in mode 'read-only'? (mode='r')\n", 
+                                e$message)
+            stop(e)
+          }
+        )
+      loom.spec.version <- h5attr(x=loom, which=GA_LOOM_SPEC_VERSION)
+    }
+    if(loom.spec.version >= 3)
+      stop(paste0("Corrupted loom file: expecting LOOM_SPEC_VERSION 2 but it's different (",loom.spec.version,") !"))
+    return (loom.spec.version)
+  }
+}
+
+update_global_attr <- function(
+  loom,
+  key,
+  value
+) {
+  if(loom$mode=="r") stop("Cannot update the given global attribute: file open as read-only.")
+  remove_global_attr(
+    loom = loom,
+    key = key
+  )
+  add_global_attr(
+    loom = loom,
+    key = key,
+    value = value
+  )
+}
+
+remove_global_attr <- function(
+  loom,
+  key
+) {
+  if(loom$mode=="r") stop("Cannot renove the given global attribute: file open as read-only.")
+  if(is_loom_spec_version_3_or_greater(loom = loom)) {
+    loom$link_delete(name = paste0("attrs/",key))
+  } else {
+    loom$attr_delete(attr_name = key)
+  }
+  flush(loom = loom)
+}
+```
+
+```{r}
+# Add info
+for (i in 1:ncol(clust)){
+  add_col_attr(loom=loom, key = colnames(clust)[i], value=as.vector(unlist(clust[,i])), as.annotation=T)
+}
+
+add_col_attr(loom=loom, key = colnames(scrub)[1], value=as.vector(unlist(scrub[,1])), as.metric=T)
+add_col_attr(loom=loom, key = colnames(scrub)[2], value=as.character(as.vector(unlist(scrub[,2]))), as.annotation=T)
+add_col_attr(loom=loom, key = colnames(scrub)[3], value=as.character(as.vector(unlist(scrub[,3]))), as.annotation=T)
+remove_col_attr(loom, 'leiden')
+
+gmd<-get_global_meta_data(loom = loom)
+gmd[['annotations']] <- gmd[['annotations']][-as.vector(which(unlist(gmd[['annotations']])[grep('name', names(unlist(gmd[['annotations']])))] == 'leiden'))]
+update_global_meta_data(loom = loom, meta.data.json = rjson::toJSON(x = gmd))
+flush(loom)
+```
+
+# Put thresold on doublet scores
+
+```{r}
+keep_cells <- rownames(scrub[which(scrub[,2] == 0),])
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`HVG UMAP`
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+plot(gene_umap[keep_cells,])
+```
+
+# Create loom file to rerun pipeline
+
+```{r}
+dgem <- get_dgem(loom)
+dgem <- dgem[,keep_cells]
+# Fix column names
+colnames(dgem) <- gsub('-1.0.0', '-1-10x_multiome_brain', colnames(dgem))
+
+library(SCopeLoomR)
+### Create the minimal loom file
+file.name <- "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_brain/output/rna/vsn/add_clusters_scrublet_as_annot/10x_multiome_brain_filtered.loom"
+build_loom(
+  file.name=file.name,
+  dgem=dgem,
+)
+rm(loom)
+```
+
+# Same for filtered loom results
+
+```{r}
+clust <- get_clusterings_with_name(loom)
+colnames(clust) <- c('leiden_res0.3', 'leiden_res0.9', 'leiden_res0.6', 'leiden_res1.2')
+
+ct <- as.vector(unlist(clust$leiden_res1.2))
+ct[grep('MOL', ct)] <- 'MOL'
+ct[grep('NFOL', ct)] <- 'NFOL'
+ct[grep('AST_CER', ct)] <- 'AST_CER'
+ct <- lapply(ct, sub, pattern = " ", replacement = "-")
+ct <- as.vector(unlist(lapply(ct, sub, pattern = "-(.*)", replacement = "")))
+clust <- cbind(clust, ct)
+
+colnames(clust)[5] <- 'cell_type'
+```
+
+```{r}
+# Add info
+for (i in 1:ncol(clust)){
+  add_col_attr(loom=loom, key = colnames(clust)[i], value=as.vector(unlist(clust[,i])), as.annotation=T)
+}
+
+remove_col_attr(loom, 'leiden')
+
+gmd<-get_global_meta_data(loom = loom)
+gmd[['annotations']] <- gmd[['annotations']][-as.vector(which(unlist(gmd[['annotations']])[grep('name', names(unlist(gmd[['annotations']])))] == 'leiden'))]
+update_global_meta_data(loom = loom, meta.data.json = rjson::toJSON(x = gmd))
+flush(loom)
+```
+
+# Fix sample_id
+
+```{r}
+# Load file
+library(SCopeLoomR)
+file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_brain/output/rna/vsn/add_clusters_scrublet_as_annot/10x_multiome_brain_SCENIC_SCope_output_noDBL.loom'
+loom <- open_loom(file, mode = "r+")
+```
+
+```{r}
+remove_col_attr(loom, 'sample_id')
+
+gmd<-get_global_meta_data(loom = loom)
+gmd[['annotations']] <- gmd[['annotations']][-as.vector(which(unlist(gmd[['annotations']])[grep('name', names(unlist(gmd[['annotations']])))] == 'sample_id'))]
+update_global_meta_data(loom = loom, meta.data.json = rjson::toJSON(x = gmd))
+```
+
+# Add sample_id again
+
+```{r}
+clust <- get_clusterings_with_name(loom)
+sample_id <- rep('1.0.0', nrow(clust))
+names(sample_id) <- rownames(clust)
+sample_id <- as.data.frame(sample_id)
+
+add_col_attr(loom=loom, key = 'sample_id', value=as.vector(unlist(sample_id[,1])), as.annotation=T)
+flush(loom)
+```
+

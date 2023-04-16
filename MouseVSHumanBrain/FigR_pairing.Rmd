@@ -1,0 +1,509 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Integration with FigR
+
+## 1. Create SE
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat Harmony UMAP`
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+cell_data[] <- lapply(cell_data, sub, pattern = " ", replacement = "-")
+cell_data[] <- lapply(cell_data, sub, pattern = "-(.*)", replacement = "")
+```
+
+```{r}
+library(SummarizedExperiment)
+library(data.table)
+ATAC <- fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/pycisTopic/scATACseq_Mouse_cortex_fragment_counts.tsv')
+ATAC <- as.data.frame(ATAC)
+rownames(ATAC) <- ATAC[,1]
+ATAC <- ATAC[,-1]
+se <- SummarizedExperiment(ATAC, colData = cell_data)
+saveRDS(se, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/FigR_mapping/ATAC_se.RDS')
+ATAC.se <- se
+```
+
+```{r}
+library(SummarizedExperiment)
+library(data.table)
+RNA <- fread('/staging/leuven/stg_00002/lcb/cbravo/GEO_BravoDeWinter_etal_2022/geo_submission/Mouse_cortex/processed/Mouse_cortex_DGEM.tsv')
+RNA <- as.data.frame(RNA)
+rownames(RNA) <- RNA[,1]
+RNA <- RNA[,-1]
+se <- SummarizedExperiment(RNA, colData = cell_data)
+saveRDS(se, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/FigR_mapping/RNA_se.RDS')
+RNA.se <- se
+```
+
+## 2. Create Signac/Seurat objects
+
+- Fix fragments files
+
+```{r}
+cell_data_all <- cell_data
+library(Signac)
+library(Seurat)
+library(data.table)
+bcs <- sapply(strsplit(rownames(cell_data_all[grep("10x_complex_UC",cell_data_all$ACC_sample_id),]), split = "___"), "[", 1)
+counts <- ATAC[, rownames(cell_data_all[grep("10x_complex_UC",cell_data_all$ACC_sample_id),])]
+cell_data <- cell_data_all[colnames(counts),]
+rownames(cell_data) <- bcs
+colnames(counts) <- bcs
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = 'mm10',
+  fragments = '/staging/leuven/stg_00002/lcb/lcb_projects/TEW/Multiome/cellranger_arc/mouse_brain/TEW__c3f7c1__1ac906__Multiome_brain_10xcomplex_UC/outs/atac_fragments.tsv.gz'
+)
+x1 <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = cell_data
+)
+x1$dataset <- '10x_complex_UC'
+saveRDS(x1, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/10x_complex_UC.RDS')
+
+bcs <- sapply(strsplit(rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "10x_complex"),]),  split = "___"), "[", 1)
+counts <- ATAC[, rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "10x_complex"),])]
+cell_data <- cell_data_all[colnames(counts),]
+rownames(cell_data) <- bcs
+colnames(counts) <- bcs
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = 'mm10',
+  fragments = '/staging/leuven/stg_00002/lcb/lcb_projects/TEW/Multiome/cellranger_arc/mouse_brain/TEW__d112c8__547ada__Multiome_RNA_brain_10x_complex/outs/atac_fragments.tsv.gz'
+)
+x2 <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = cell_data
+)
+x2$dataset <- '10x_complex'
+saveRDS(x2, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/10x_complex.RDS')
+
+bcs <- sapply(strsplit(rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "10x_no_perm"),]),  split = "___"), "[", 1)
+counts <- ATAC[, rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "10x_no_perm"),])]
+cell_data <- cell_data_all[colnames(counts),]
+rownames(cell_data) <- bcs
+colnames(counts) <- bcs
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = 'mm10',
+  fragments = '/staging/leuven/stg_00002/lcb/lcb_projects/TEW/Multiome/cellranger_arc/mouse_brain/TEW__014e25__c14e1d__Multiome_RNA_brain_10x_no_perm/outs/atac_fragments.tsv.gz'
+)
+x3 <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = cell_data
+)
+x3$dataset <- '10x_no_perm'
+saveRDS(x3, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/10x_no_perm.RDS')
+
+bcs <- sapply(strsplit(rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "TST"),]),  split = "___"), "[", 1)
+counts <- ATAC[, rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "TST"),])]
+cell_data <- cell_data_all[colnames(counts),]
+rownames(cell_data) <- bcs
+colnames(counts) <- bcs
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = 'mm10',
+  fragments = '/staging/leuven/stg_00002/lcb/lcb_projects/TEW/Multiome/cellranger_arc/mouse_brain/TEW__75da5c__5b0f59__Multiome_brain_TST/outs/atac_fragments.tsv.gz'
+)
+x4 <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = cell_data
+)
+x4$dataset <- 'TST'
+saveRDS(x4, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/TST.RDS')
+
+bcs <- sapply(strsplit(rownames(cell_data_all[which(cell_data_all$ACC_sample_id == "TST_NP40_004"),]),  split = "___"), "[", 1)
+counts <- ATAC[, rownames(cell_data_all[which(cell_data_all $ACC_sample_id == "TST_NP40_004"),])]
+cell_data <- cell_data_all[colnames(counts),]
+rownames(cell_data) <- bcs
+colnames(counts) <- bcs
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = 'mm10',
+  fragments = '/staging/leuven/stg_00002/lcb/lcb_projects/TEW/Multiome/cellranger_arc/mouse_brain/TEW__3cc0d9__bb22bc__Multiome_brain_TST_NP40_004/outs/atac_fragments.tsv.gz'
+)
+x5 <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = cell_data
+)
+x5$dataset <- 'TST_NP40_004'
+saveRDS(x5, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/TST_NP40_004.RDS')
+```
+
+```{r}
+combined <- merge(
+  x = x1,
+  y = list(x2, x3, x4, x5),
+  add.cell.ids = c('10x_complex_UC', '10x_complex', '10x_no_perm', 'TST', 'TST_NP40_004')
+)
+saveRDS(combined, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS')
+```
+
+```{r}
+library(Signac)
+library(Seurat)
+library(data.table)
+atac <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS')
+# ATAC analysis add gene annotation information
+library(EnsDb.Mmusculus.v79)
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+seqlevelsStyle(annotations) <- "UCSC"
+genome(annotations) <- "mm10"
+Annotation(atac) <- annotations
+
+# We exclude the first dimension as this is typically correlated with sequencing depth
+atac <- RunTFIDF(atac)
+atac <- FindTopFeatures(atac, min.cutoff = "q0")
+atac <- RunSVD(atac)
+saveRDS(atac, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS')
+```
+
+```{r}
+atac <- RunUMAP(atac, reduction = "lsi", dims = 2:30, reduction.name = "umap.lsi", reduction.key = "atacUMAP_")
+DimPlot(atac, group.by = "GEX_conserved_cell_type", label = FALSE, reduction='umap.lsi') + NoLegend() 
+```
+
+```{r}
+library(harmony)
+atac <- RunHarmony(
+  object = atac,
+  dims.use=2:30,
+  group.by.vars = c("ACC_sample_id"),
+  reduction = "lsi",
+  assay.use = "peaks",
+  project.dim = FALSE,
+)
+
+atac <- RunUMAP(atac, dims=2:30, reduction = "harmony", reduction.name = "umap.atac.harmony", reduction.key = "atacUMAP_")
+DimPlot(atac, group.by = "GEX_consensus_cell_type", label = TRUE, reduction='umap') + NoLegend()
+```
+
+```{r}
+obj.list <- SplitObject(atac, split.by = "ACC_sample_id")
+# normalize and identify variable features for each dataset independently
+obj.list <- lapply(X = obj.list, FUN = function(x) {
+  x <- RunTFIDF(x)
+  x <- FindTopFeatures(x, min.cutoff = "q0")
+})
+```
+
+```{r}
+# find integration anchors
+integration.anchors <- FindIntegrationAnchors(
+  object.list = obj.list,
+  anchor.features = rownames(atac),
+  reduction = "rlsi",
+  dims = 2:30
+)
+
+# integrate LSI embeddings
+atac <- IntegrateEmbeddings(
+  anchorset = integration.anchors,
+  reductions = atac[["lsi"]],
+  new.reduction.name = "integrated_lsi",
+  dims.to.integrate = 1:30
+)
+
+# create a new UMAP using the integrated embeddings
+atac <- RunUMAP(atac, reduction = "integrated_lsi", dims = 2:30, reduction.name = "umap.atac.rlsi")
+DimPlot(atac, group.by = "GEX_consensus_cell_type", label = TRUE, reduction='umap.atac.rlsi') + NoLegend() 
+```
+```{r}
+saveRDS(atac, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS')
+```
+
+## UMAPs
+
+```{r}
+atac <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS') 
+```
+
+```{r}
+gene_umap <- atac@reductions$umap.atac.rlsi@cell.embeddings
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+cell_data <- atac@meta.data
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+sort(unique(cell_data$GEX_consensus_cell_type))
+```
+
+```{r}
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')
+c2 <- brewer.pal(9, 'Blues')
+c3 <- brewer.pal(8, 'Oranges')
+colvar <- c(c3[2], 'purple', c1[2], c1[4], c1[6], c2[2], c2[3], c2[4], c2[5], c2[6], c2[7], c2[8], 'navy', c1[7], c1[8], 'forestgreen', c2[9], 'deeppink', 'lightpink', c3[3], 'lightgreen', c3[5], c3[6])
+names(colvar) <- sort(unique(cell_data$GEX_consensus_cell_type))
+saveRDS(colvar, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/colvar_mouse.RDS')
+```
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_consensus_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_consensus_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Mouse_UMAP_no_labels_signac_corrected.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Mouse_UMAP_with_labels_signac_corrected.pdf'))
+LabelClusters(plot, 'GEX_consensus_cell_type', split.by ='GEX_consensus_cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_sample_id)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") 
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_sample_id)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none")
+ggsave(filename = paste0(path, 'Mouse_UMAP_no_labels_signac_corrected_sample.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Mouse_UMAP_with_labels_signac_corrected_sample.pdf'))
+LabelClusters(plot, 'GEX_sample_id', split.by ='GEX_sample_id', box=FALSE, repel=TRUE)
+dev.off()
+```
+
+## 3. Coembed ATAC and RNA cells
+
+```{r}
+atac <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS')
+rna <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat_cortex_only.RDS')
+DimPlot(rna, group.by = "consensus_cell_type", label = TRUE, reduction='umap_harmony') + NoLegend() 
+rna_names <- colnames(rna) 
+rna_names  <- gsub('TEW__3cc0d9__bb22bc__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__75da5c__5b0f59__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__c14e1d__Multiome_RNA_brain_', '', rna_names )
+rna_names  <- gsub('TEW__c3f7c1__1ac906__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__d112c8__547ada__Multiome_RNA_brain_', '', rna_names )
+rna_names  <- gsub('10xcomplex_UC', '10x_complex_UC', rna_names )
+rna_names <- paste0(sapply(strsplit(unlist(rna_names), split = "___"), "[", 2), '_', sapply(strsplit(unlist(rna_names), split = "___"), "[", 1))
+rna <- RenameCells(rna, new.names=rna_names)
+rna$keep <- rep('N', nrow(rna@meta.data))
+rna$keep[which(rna_names %in% colnames(atac))] <- 'Y'
+rna <- subset(rna, subset = keep == 'Y')
+rna <- RenameCells(rna, new.names=paste0('RNA_', colnames(rna)))
+atac <- RenameCells(atac, new.names=paste0('ATAC_', colnames(atac)))
+```
+
+```{r}
+# quantify gene activity
+gene.activities <- GeneActivity(atac, features = VariableFeatures(rna))
+
+# add gene activities as a new assay
+atac[["ACTIVITY"]] <- CreateAssayObject(counts = gene.activities)
+
+# normalize gene activities
+DefaultAssay(atac) <- "ACTIVITY"
+atac <- NormalizeData(atac)
+atac <- ScaleData(atac, features = rownames(atac))
+```
+```{r}
+# Identify anchors
+transfer.anchors <- FindTransferAnchors(reference = rna, query = atac, features = VariableFeatures(object = rna),
+    reference.assay = "RNA", query.assay = "ACTIVITY", reduction = "cca")
+saveRDS(transfer.anchors, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/transfer_anchors.RDS')
+```
+
+```{r}
+# note that we restrict the imputation to variable genes from scRNA-seq, but could impute the
+# full transcriptome if we wanted to
+genes.use <- VariableFeatures(rna)
+refdata <- GetAssayData(rna, assay = "RNA", slot = "data")[genes.use, ]
+
+# refdata (input) contains a scRNA-seq expression matrix for the scRNA-seq cells.  imputation
+# (output) will contain an imputed scRNA-seq matrix for each of the ATAC cells
+imputation <- TransferData(anchorset = transfer.anchors, refdata = refdata, weight.reduction = atac[["integrated_lsi"]],
+    dims = 2:30)
+atac[["RNA"]] <- imputation
+colnames(rna@meta.data) <- paste0('GEX_', colnames(rna@meta.data))
+coembed <- merge(x = rna, y = atac)
+saveRDS(coembed, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/coembed.RDS')
+saveRDS(genes.use, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/genes_use.RDS')
+```
+
+```{r}
+# Finally, we run PCA and UMAP on this combined object, to visualize the co-embedding of both
+# datasets
+coembed <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/coembed.RDS')
+genes.use <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/genes_use.RDS')
+coembed <- ScaleData(coembed, features = genes.use, do.scale = FALSE)
+coembed <- RunPCA(coembed, features = genes.use, verbose = FALSE)
+coembed <- RunUMAP(coembed, dims = 1:30, n.neighbors = 30)
+```
+
+```{r}
+library(Signac)
+library(Seurat)
+library(data.table)
+#coembed <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/coembed.RDS')
+#coembed$GEX_consensus_cell_type[grep('-1___', colnames(coembed))] <- coembed$GEXconsensus_cell_type[grep('-1___', colnames(coembed))]
+coembed$ACC_sample_id[grep('RNA', colnames(coembed))] <- sapply(strsplit(coembed$GEX_sample_id[grep('RNA', colnames(coembed))], split = "brain_"), "[", 2)
+DimPlot(coembed, group.by = c("GEX_consensus_cell_type"), label=TRUE) + NoLegend()
+```
+
+```{r}
+DimPlot(coembed, group.by = c("ACC_sample_id"))
+```
+
+```{r}
+library(harmony)
+coembed <- RunHarmony(
+  object = coembed,
+  dims.use=1:30,
+  group.by.vars = c("ACC_sample_id"),
+  max.iter.harmony = 20
+)
+
+coembed <- RunUMAP(coembed, dims=1:30, reduction = "harmony", reduction.name = "umap.harmony")
+DimPlot(coembed, group.by = "GEX_consensus_cell_type", label = TRUE, reduction='umap.harmony') + NoLegend()
+```
+```{r}
+coembed$technique <- rep('ATAC', nrow(coembed@meta.data))
+coembed$technique[which(is.na(coembed$dataset))] <- 'RNA'
+DimPlot(coembed, group.by = "technique", reduction='umap.harmony')
+```
+```{r}
+saveRDS(coembed, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/coembed.RDS')
+```
+
+## 4. Run FigR pairing
+
+```{r}
+ATAC.se <- readRDS("/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/FigR_mapping/ATAC_se.RDS")
+RNAmat <- readRDS("/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/FigR_mapping/RNA_se.RDS")
+```
+
+```{r}
+coembed <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/coembed.RDS')
+CCA_PCs <- coembed@reductions$harmony@cell.embeddings
+dim(CCA_PCs) # ATAC + RNA (rows), n components (columns)
+```
+
+```{r}
+isATAC <- grepl("ATAC_",rownames(CCA_PCs))
+table(isATAC)
+```
+
+```{r}
+ATACcells <- rownames(CCA_PCs)[isATAC]
+RNAcells <- rownames(CCA_PCs)[!isATAC]
+
+cat("ATAC cells in condition: ",length(ATACcells),"\n")
+cat("RNA cells in condition: ",length(RNAcells),"\n")
+```
+
+```{r}
+nPCs <- 30 # Num CCA PCs to use when running UMAP / pairing
+
+# Run UMAP
+set.seed(123)
+umap.out <- uwot::umap(CCA_PCs[,1:nPCs],
+                       metric="cosine",
+                       n_neighbors=30)
+
+umap.d <- as.data.frame(umap.out)
+colnames(umap.d) <- c("UMAP1","UMAP2")
+rownames(umap.d) <- rownames(CCA_PCs)
+  
+umap.d$Assay <- ifelse(isATAC,"ATAC","RNA")
+
+BuenColors::shuf(umap.d) %>% 
+  ggplot(aes(UMAP1,UMAP2,color=Assay)) + 
+  geom_point(size=0.1) + 
+  theme_classic() + 
+  scale_color_manual(values = c("cadetblue","darkorange"))+
+  guides(colour = guide_legend(override.aes = list(size=3)))
+```
+
+
+```{r}
+ATAC_PCs <- CCA_PCs[isATAC,]
+RNA_PCs <- CCA_PCs[!isATAC,]
+library(FigR)
+options("optmatch_max_problem_size" = Inf)
+pairing <- pairCells(ATAC = ATAC_PCs,
+                     RNA = RNA_PCs,
+                     keepUnique = TRUE)
+saveRDS(pairing, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/FigR_mapping/Pairing.RDS')
+```
+
+```{r}
+library(SCopeLoomR)
+pairing <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/FigR_mapping/Pairing.RDS')
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat Harmony UMAP`
+colnames(gene_umap) <- c('UMAP1', 'UMAP2')
+```
+
+```{r}
+atac_bc <- substr(as.vector(unlist(pairing$ATAC)), nchar(as.vector(unlist(pairing$ATAC)))-17, nchar(as.vector(unlist(pairing$ATAC))))
+atac_sample <- substr(as.vector(unlist(pairing$ATAC)), 6, nchar(as.vector(unlist(pairing$ATAC)))-19)
+rna_bc <- substr(as.vector(unlist(pairing$RNA)), nchar(as.vector(unlist(pairing$RNA)))-17, nchar(as.vector(unlist(pairing$RNA))))
+rna_sample <- substr(as.vector(unlist(pairing$RNA)), 5, nchar(as.vector(unlist(pairing$RNA)))-19)
+atac_names <- paste0('ATAC_', atac_bc, '___', atac_sample)
+rna_names <- paste0('RNA_', rna_bc, '___', rna_sample)
+```
+
+```{r}
+umap_atac <- gene_umap
+rownames(umap_atac) <- paste0('ATAC_', rownames(umap_atac))
+umap_rna <- gene_umap
+rownames(umap_rna) <- paste0('RNA_', rownames(umap_rna))
+umap_coord <- as.data.frame(rbind(umap_atac, umap_rna))
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/plots/FigR.pdf')
+plotPairs(ATAC = atac_names,
+          RNA= rna_names,
+          max.show = 500,
+          umap.df = umap_coord)
+dev.off()
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/plots/Random.pdf')
+plotPairs(ATAC = sample(atac_names),
+          RNA= sample(rna_names),
+          max.show = 500,
+          umap.df = umap_coord)
+dev.off()
+```
+
+```{r}
+figr_pairing <- cbind(atac_names, rna_names, paste0('Cell_', 1:length(rna_names)))
+colnames(figr_pairing) <- c('ATAC', 'RNA', 'Name')
+write.table(figr_pairing, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/figr_pairing.tsv', col.names=T, quote=FALSE, row.names = FALSE)
+```
+
+```{r}
+random_pairing <- cbind(sample(atac_names), sample(rna_names), paste0('Cell_', 1:length(rna_names)))
+colnames(random_pairing) <- c('ATAC', 'RNA', 'Name')
+write.table(random_pairing, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/random_pairing.tsv', col.names=T, quote=FALSE, row.names = FALSE)
+```

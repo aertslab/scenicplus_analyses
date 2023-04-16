@@ -1,0 +1,1321 @@
+---
+title: "Comparison Mouse Human"
+output: html_notebook
+---
+
+
+# 1. UMAPs
+
+## Mouse
+/Users/u0117456/Volumes/hpc2/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_mouse
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+dgem <- get_dgem(loom)
+write.table(dgem, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/Mouse_cortex_DGEM.tsv', sep='\t', quote=FALSE)
+```
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat Harmony UMAP`
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+cell_data[] <- lapply(cell_data, sub, pattern = " ", replacement = "-")
+cell_data[] <- lapply(cell_data, sub, pattern = "-(.*)", replacement = "")
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+sort(unique(cell_data$GEX_consensus_cell_type))
+```
+
+```{r}
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')
+c2 <- brewer.pal(9, 'Blues')
+c3 <- brewer.pal(8, 'Oranges')
+colvar <- c(c3[2], 'purple', c1[2], c1[4], c1[6], c2[2], c2[3], c2[4], c2[5], c2[6], c2[7], c2[8], 'navy', c1[7], c1[8], 'forestgreen', c2[9], 'deeppink', 'lightpink', c3[3], 'lightgreen', c3[5], c3[6])
+names(colvar) <- sort(unique(cell_data$GEX_consensus_cell_type))
+saveRDS(colvar, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/colvar_mouse.RDS')
+```
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_consensus_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_consensus_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Mouse_UMAP_no_labels.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Mouse_UMAP_with_labels.pdf'))
+LabelClusters(plot, 'GEX_consensus_cell_type', split.by ='GEX_consensus_cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```
+
+## PycisTopic
+/Users/u0117456/Volumes/hpc2/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_mouse
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`ACC_harmony_UMAP`
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+cell_data[] <- lapply(cell_data, sub, pattern = " ", replacement = "-")
+cell_data[] <- lapply(cell_data, sub, pattern = "-(.*)", replacement = "")
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+sort(unique(cell_data$GEX_consensus_cell_type))
+```
+
+```{r}
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')
+c2 <- brewer.pal(9, 'Blues')
+c3 <- brewer.pal(8, 'Oranges')
+colvar <- c(c3[2], 'purple', c1[2], c1[4], c1[6], c2[2], c2[3], c2[4], c2[5], c2[6], c2[7], c2[8], 'navy', c1[7], c1[8], 'forestgreen', c2[9], 'deeppink', 'lightpink', c3[3], 'lightgreen', c3[5], c3[6])
+names(colvar) <- sort(unique(cell_data$GEX_consensus_cell_type))
+saveRDS(colvar, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/colvar_mouse.RDS')
+```
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_consensus_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_consensus_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Mouse_UMAP_no_labels_pycistopic_corrected.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Mouse_UMAP_with_labels_pycisTopic_corrected.pdf'))
+LabelClusters(plot, 'GEX_consensus_cell_type', split.by ='GEX_consensus_cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_sample_id)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") 
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_sample_id)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none")
+ggsave(filename = paste0(path, 'Mouse_UMAP_no_labels_pycistopic_corrected_sample.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Mouse_UMAP_with_labels_pycisTopic_uncorrected_sample.pdf'))
+LabelClusters(plot, 'GEX_sample_id', split.by ='GEX_sample_id', box=FALSE, repel=TRUE)
+dev.off()
+```
+
+## Human
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/SCENIC+_human_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat UMAP`
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+#cell_data[] <- lapply(cell_data, sub, pattern = " ", replacement = "-")
+#cell_data[] <- lapply(cell_data, sub, pattern = "-(.*)", replacement = "")
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+cell_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_data$GEX_Seurat_cell_type)
+sort(unique(cell_data$GEX_Seurat_cell_type))
+```
+
+```{r}
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')
+c2 <- brewer.pal(9, 'Blues')
+colvar <- c('purple', c1[2], c1[4], c1[6], 'orange', c2[2], c2[3], c2[5], c2[4], c2[7], c2[8], 'navy', c2[6],
+            c1[7], c1[8], 'forestgreen', c2[9], 'deeppink', 'lightpink')
+names(colvar) <- sort(unique(cell_data$GEX_Seurat_cell_type))
+```
+
+```{r}
+# Load functions
+cell_plot_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_plot_data$GEX_Seurat_cell_type)
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_Seurat_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_Seurat_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Human_UMAP_no_labels.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Human_UMAP_with_labels.pdf'))
+LabelClusters(plot, 'GEX_Seurat_cell_type', split.by ='GEX_Seurat_cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```
+
+## Cerebellum
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_brain/output/scenicplus/HC_gene_based.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`ACC_Seurat_RNA+ATAC_UMAP`
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+#cell_data[] <- lapply(cell_data, sub, pattern = " ", replacement = "-")
+#cell_data[] <- lapply(cell_data, sub, pattern = "-(.*)", replacement = "")
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+sort(unique(cell_data$GEX_Seurat_cell_type))
+```
+
+```{r}
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')
+c2 <- brewer.pal(9, 'Blues')
+colvar <- c('purple', 'hotpink4','hotpink1', 'orange', c2[6], c2[4], "#CB181D", "#FC9272", "#99000D", "#EF3B2C", 'indianred1', 'forestgreen', 'deeppink', 'orchid1','lightpink', 'navy')
+names(colvar) <- sort(unique(cell_data$GEX_Seurat_cell_type))
+```
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_Seurat_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=GEX_Seurat_cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Human_cerebellym_UMAP_no_labels.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Human_cerebellum_UMAP_with_labels.pdf'))
+LabelClusters(plot, 'GEX_Seurat_cell_type', split.by ='GEX_Seurat_cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```
+
+## Resolve
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/Resolve_looms/A1.TANGRAM_normCombat_eRegulon_scope_flipped.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$spatial_flipped
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+sort(unique(cell_data$tangram_best_GEX_Seurat_cell_type))
+```
+
+```{r}
+colvar <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/colvar_mouse.RDS')
+names(colvar) <- gsub('_', ' ', names(colvar))
+names(colvar) <- gsub('IT', ' IT', names(colvar))
+names(colvar) <- gsub('ET', ' PT', names(colvar))
+names(colvar) <- gsub('CT', ' CT', names(colvar))
+names(colvar) <- gsub('Car3', 'CAR3', names(colvar))
+colvar['ENDO'] <- 'orange'
+```
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/cross_species_plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=tangram_best_GEX_conserved_cell_type)) + geom_point(size = 2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=tangram_best_GEX_conserved_cell_type)) + geom_point(size = 2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Resolve_SNARE_no_labels_TEW.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Resolve_SNARE_with_labels_TEW.pdf'))
+LabelClusters(plot, 'tangram_best_GEX_conserved_cell_type', split.by ='tangram_best_GEX_conserved_cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```
+# 2. Dotplot
+
+## Mouse
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- AUCell::getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+cell_data$Pseudobulk <- cell_data$GEX_conserved_cell_type
+```
+
+```{r}
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+out_extended <- vector()
+for (name in names(regulon_list)[grep('extended', names(regulon_list))]){
+  sub_name <- gsub('_extended', '', name)
+  if (sub_name %in% names(regulon_list))
+    out_extended <- c(out_extended , name)
+}
+out_extended <- c(out_extended, names(regulon_list)[grep('+_-', names(regulon_list), fixed=TRUE)], names(regulon_list)[grep('-_-', names(regulon_list), fixed=TRUE)])
+
+regulon_list <- regulon_list[-which(names(regulon_list) %in% out_extended)]
+cells_AUC <- cells_AUC[-which(rownames(cells_AUC) %in% out_extended),]
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+rownames(cells_AUC) <- gsub('_extended', '', rownames(cells_AUC))
+
+names(regulon_list) <- gsub('_+_+', '_+', names(regulon_list), fixed=TRUE)
+names(regulon_list) <- gsub('_-_+', '_-', names(regulon_list), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_+_+', '_+', rownames(cells_AUC), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_-_+', '_-', rownames(cells_AUC), fixed=TRUE)
+```
+
+```{r}
+saveRDS(regulon_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/regulon_list.RDS')
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+for (name in colnames(rss_values)){
+  print(plotRSS_oneSet(rss_values, setName = name, n=30))
+}
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_region_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC_region <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cells_AUC_region <- cells_AUC_region[-which(rownames(cells_AUC_region) %in% out_extended),]
+rownames(cells_AUC_region) <- gsub('_extended', '', rownames(cells_AUC_region) )
+rownames(cells_AUC_region) <- gsub('_+_+', '_+', rownames(cells_AUC_region), fixed=TRUE)
+rownames(cells_AUC_region) <- gsub('_-_+', '_-', rownames(cells_AUC_region), fixed=TRUE)
+```
+
+```{r}
+cells_AUC <- cells_AUC[rownames(cells_AUC_region), which(colnames(cells_AUC) %in% colnames(cells_AUC_region))]
+cells_AUC_region <- cells_AUC_region[rownames(cells_AUC), colnames(cells_AUC)]
+correlations <- cor(t(cells_AUC), t(cells_AUC_region))
+corre <- diag(correlations)
+```
+
+```{r}
+x <- regulon_list[names(corre[which(corre > 0.4)])]
+x <- x[which(lengths(x) > 35)]
+length(x)
+```
+
+- How many TFs are only positive, only negative or both?
+
+```{r}
+regulon_list <- regulon_list[names(corre[which(corre > 0.4)])]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 35)]
+both <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+both <- both[duplicated(both)]
+correlations_both <- diag(correlations[paste0(both, '_-'), paste0(both, '_+')])
+names(correlations_both) <- both
+both <- names(correlations_both)[which(correlations_both < 0)]
+# No out in this case
+if (sum(correlations_both > 0) > 0){
+  out <- paste0(names(correlations_both)[which(correlations_both > 0)], '_-')
+  regulon_list <- regulon_list[-which(names(regulon_list) %in% out)]
+}
+negative <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_-'))]
+negative <- negative[grep('_-', negative)]
+positive <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_+'))]
+positive <- positive[grep('_+', positive, fixed=TRUE)]
+```
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_cell_annotation(loom)
+cell_data$Pseudobulk <- cell_data$GEX_conserved_cell_type
+cell_data <- cell_data[-which(cell_data$Pseudobulk %in% c('ENDO', 'NP', 'L6 IT CAR3'))]
+```
+
+```{r}
+saveRDS(cells_AUC, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/cells_AUC_genebased.RDS')
+```
+
+#### Option 1
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_glia <- rss_values[,c('AST', 'OPC', 'OL', 'MGL')]
+```
+
+```{r}
+cell_data_2 <- cell_data[which(cell_data$Pseudobulk %in% c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'L6 IT', 'L6 CT', 'L6b')),]
+cells_AUC_2 <- cells_AUC[,rownames(cell_data_2)]
+rss_values <- calcRSS(cells_AUC_2, cell_data_2$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_neuron <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')]
+```
+
+```{r}
+rss_values <- cbind(rss_values_neuron, rss_values_glia)
+```
+
+```{r}
+saveRDS(rss_values, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/rss_values.RDS')
+```
+
+#### Option 2
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'L6 IT', 'L6 CT', 'L6b', 'AST', 'OPC', 'OL', 'MGL')]
+```
+
+```{r}
+saveRDS(rss_values, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/rss_values_combined.RDS')
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$Pseudobulk)])/sum(rowSums(dgem[,grep(x, cell_data$Pseudobulk)]))*10^6+1)))
+}
+library(data.table)
+exp_mat <- t(rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'L6 IT', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'MGL')]
+```
+
+```{r}
+sel_rel <- c(positive, negative, paste0(both, '_+'), paste0(both, '_-'))
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+exp_mat <- t(scale(t(exp_mat)))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/HQ_regulons.RDS')
+saveRDS(rel_data, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/rel_data.RDS')
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/HQ_regulons.RDS')
+write.table(sel_rel, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/HQ_regulons.tsv', quote=FALSE, col.names = FALSE, row.names = FALSE)
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(3, 5), limits=c(0.8, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg//Regulon_dotplot_all_RSS_suppl_V2.pdf', g, width=18, height=6)
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(3, 5), limits=c(0.8, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg//Regulon_dotplot_all_RSS_suppl_V2.pdf', g, width=18, height=6)
+```
+
+```{r}
+selected_eregulons <- c('Dlx6_+', 'Dlx2_+', 'Dlx1_+', 'Lhx6_+', 'Arx_+', # Pan
+                        'Cux1_+', 'Cux2_+', 'Rfx3_+', 'Meis2_+', 'Mef2c_+', #L2/3
+                        'Rora_+', 'Pparg_+',
+                        'Etv1_+',
+                        'Tbr1_+', 'Foxp1_+',
+                        'Sox9_+', 'Nfia_+',
+                        'Olig2_+','Sox10_+',
+                        'Irf8_+'
+                        )
+df <- rel_data
+```
+
+```{r}
+rel_data <- df
+rel_data <- rel_data[which(rel_data$Regulon %in% selected_eregulons),]
+rel_data$Regulon <- factor(rel_data$Regulon, levels=rev(selected_eregulons))
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=colnames(rss_values))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) 
+print(g)
+```
+
+```{r}
+rel_data <- df
+rel_data <- rel_data[which(rel_data$Regulon %in% selected_eregulons),]
+rel_data$Regulon <- factor(rel_data$Regulon, levels=rev(selected_eregulons))
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=colnames(rss_values))
+rel_data <- rel_data[-which(rel_data$Cell_type == 'ENDO'),]
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=colnames(rss_values)[-which(colnames(rss_values) == 'ENDO')])
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) 
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg//Regulon_dotplot_subset_V2.pdf', g, width=4, height=6)
+```
+
+
+## Human
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/SCENIC+_human_cortex_gene_based_AE.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+cell_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_data$GEX_Seurat_cell_type)
+cell_data$Pseudobulk <- cell_data$GEX_Seurat_cell_type
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+out_extended <- vector()
+for (name in names(regulon_list)[grep('extended', names(regulon_list))]){
+  sub_name <- gsub('_extended', '', name)
+  if (sub_name %in% names(regulon_list))
+    out_extended <- c(out_extended , name)
+}
+out_extended <- c(out_extended, names(regulon_list)[grep('+_-', names(regulon_list), fixed=TRUE)], names(regulon_list)[grep('-_-', names(regulon_list), fixed=TRUE)])
+```
+
+```{r}
+regulon_list <- regulon_list[-which(names(regulon_list) %in% out_extended)]
+cells_AUC <- cells_AUC[-which(rownames(cells_AUC) %in% out_extended),]
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+rownames(cells_AUC) <- gsub('_extended', '', rownames(cells_AUC))
+
+names(regulon_list) <- gsub('_+_+', '_+', names(regulon_list), fixed=TRUE)
+names(regulon_list) <- gsub('_-_+', '_-', names(regulon_list), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_+_+', '_+', rownames(cells_AUC), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_-_+', '_-', rownames(cells_AUC), fixed=TRUE)
+```
+
+```{r}
+saveRDS(regulon_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/regulon_list.RDS')
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+for (name in colnames(rss_values)){
+  print(plotRSS_oneSet(rss_values, setName = name, n=30))
+}
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC_region <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cells_AUC_region <- cells_AUC_region[-which(rownames(cells_AUC_region) %in% out_extended),]
+rownames(cells_AUC_region) <- gsub('_extended', '', rownames(cells_AUC_region) )
+rownames(cells_AUC_region) <- gsub('_+_+', '_+', rownames(cells_AUC_region), fixed=TRUE)
+rownames(cells_AUC_region) <- gsub('_-_+', '_-', rownames(cells_AUC_region), fixed=TRUE)
+```
+
+```{r}
+cells_AUC <- cells_AUC[rownames(cells_AUC_region), which(colnames(cells_AUC) %in% colnames(cells_AUC_region))]
+cells_AUC_region <- cells_AUC_region[rownames(cells_AUC), colnames(cells_AUC)]
+correlations <- cor(t(cells_AUC), t(cells_AUC_region))
+corre <- diag(correlations)
+```
+
+```{r}
+x <- regulon_list[names(corre[which(corre > 0.4)])]
+x <- x[which(lengths(x) > 30)]
+length(x)
+```
+
+- How many TFs are only positive, only negative or both?
+
+```{r}
+regulon_list <- regulon_list[names(corre[which(corre > 0.4)])]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 30)]
+both <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+both <- both[duplicated(both)]
+correlations_both <- diag(correlations[paste0(both, '_-'), paste0(both, '_+')])
+names(correlations_both) <- both
+both <- names(correlations_both)[which(correlations_both < 0)]
+# No out in this case
+if (sum(correlations_both > 0) > 0){
+  out <- paste0(names(correlations_both)[which(correlations_both > 0)], '_-')
+  regulon_list <- regulon_list[-which(names(regulon_list) %in% out)]
+}
+negative <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_-'))]
+negative <- negative[grep('_-', negative)]
+positive <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_+'))]
+positive <- positive[grep('_+', positive, fixed=TRUE)]
+```
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/SCENIC+_human_cortex_gene_based_AE.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_cell_annotation(loom)
+cell_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_data$GEX_Seurat_cell_type)
+cell_data$Pseudobulk <- cell_data$GEX_Seurat_cell_type
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_glia <- rss_values[,c('AST', 'OPC', 'OL', 'ENDO', 'MGL')]
+```
+
+```{r}
+cell_data_2 <- cell_data[which(cell_data$Pseudobulk %in% c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')),]
+cells_AUC_2 <- cells_AUC[,rownames(cell_data_2)]
+rss_values <- calcRSS(cells_AUC_2, cell_data_2$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_neuron <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')]
+```
+
+```{r}
+rss_values <- cbind(rss_values_neuron, rss_values_glia)
+```
+
+```{r}
+saveRDS(rss_values, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/rss_values.RDS')
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$Pseudobulk)])/sum(rowSums(dgem[,grep(x, cell_data$Pseudobulk)]))*10^6+1)))
+}
+library(data.table)
+exp_mat <- t(rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+sel_rel <- c(positive)
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+exp_mat <- t(scale(t(exp_mat)))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/HQ_regulons.RDS')
+saveRDS(rel_data, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/rel_data.RDS')
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/Regulon_dotplot_all_RSS_suppl_V2.pdf', g, width=18, height=6)
+```
+
+## Human - OLD
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/SCENIC+_gene_based_wSeuratUMAP.loom'
+loom <- open_loom(loom_path)
+cells_AUC <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+cell_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_data$GEX_Seurat_cell_type)
+cell_data$Pseudobulk <- cell_data$GEX_Seurat_cell_type
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+out_extended <- vector()
+for (name in names(regulon_list)[grep('extended', names(regulon_list))]){
+  sub_name <- gsub('_extended', '', name)
+  if (sub_name %in% names(regulon_list))
+    out_extended <- c(out_extended , name)
+}
+out_extended <- c(out_extended, names(regulon_list)[grep('+_-', names(regulon_list), fixed=TRUE)], names(regulon_list)[grep('-_-', names(regulon_list), fixed=TRUE)])
+```
+
+```{r}
+regulon_list <- regulon_list[-which(names(regulon_list) %in% out_extended)]
+cells_AUC <- cells_AUC[-which(rownames(cells_AUC) %in% out_extended),]
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+rownames(cells_AUC) <- gsub('_extended', '', rownames(cells_AUC))
+
+names(regulon_list) <- gsub('_+_+', '_+', names(regulon_list), fixed=TRUE)
+names(regulon_list) <- gsub('_-_+', '_-', names(regulon_list), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_+_+', '_+', rownames(cells_AUC), fixed=TRUE)
+rownames(cells_AUC) <- gsub('_-_+', '_-', rownames(cells_AUC), fixed=TRUE)
+```
+
+```{r}
+saveRDS(regulon_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/regulon_list.RDS')
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+for (name in colnames(rss_values)){
+  print(plotRSS_oneSet(rss_values, setName = name, n=30))
+}
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/nhecker/cross_species/snare_seq/human/scenicplus_wrapper/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+cells_AUC_region <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cells_AUC_region <- cells_AUC_region[-which(rownames(cells_AUC_region) %in% out_extended),]
+rownames(cells_AUC_region) <- gsub('_extended', '', rownames(cells_AUC_region) )
+rownames(cells_AUC_region) <- gsub('_+_+', '_+', rownames(cells_AUC_region), fixed=TRUE)
+rownames(cells_AUC_region) <- gsub('_-_+', '_-', rownames(cells_AUC_region), fixed=TRUE)
+```
+
+```{r}
+cells_AUC <- cells_AUC[rownames(cells_AUC_region), which(colnames(cells_AUC) %in% colnames(cells_AUC_region))]
+cells_AUC_region <- cells_AUC_region[rownames(cells_AUC), colnames(cells_AUC)]
+correlations <- cor(t(cells_AUC), t(cells_AUC_region))
+corre <- diag(correlations)
+```
+
+```{r}
+x <- regulon_list[names(corre[which(corre > 0.35)])]
+x <- x[which(lengths(x) > 20)]
+length(x)
+```
+
+- How many TFs are only positive, only negative or both?
+
+```{r}
+regulon_list <- regulon_list[names(corre[which(corre > 0.35)])]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+both <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+both <- both[duplicated(both)]
+correlations_both <- diag(correlations[paste0(both, '_-'), paste0(both, '_+')])
+names(correlations_both) <- both
+both <- names(correlations_both)[which(correlations_both < 0)]
+# No out in this case
+if (sum(correlations_both > 0) > 0){
+  out <- paste0(names(correlations_both)[which(correlations_both > 0)], '_-')
+  regulon_list <- regulon_list[-which(names(regulon_list) %in% out)]
+}
+negative <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_-'))]
+negative <- negative[grep('_-', negative)]
+positive <- names(regulon_list)[-which(names(regulon_list) %in% paste0(both, '_+'))]
+positive <- positive[grep('_+', positive, fixed=TRUE)]
+```
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/SCENIC+_gene_based_wSeuratUMAP.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_cell_annotation(loom)
+cell_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_data$GEX_Seurat_cell_type)
+cell_data$Pseudobulk <- cell_data$GEX_Seurat_cell_type
+```
+
+```{r}
+rss_values <- calcRSS(cells_AUC, cell_data$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_glia <- rss_values[,c('AST', 'OPC', 'OL', 'ENDO', 'MGL')]
+```
+
+```{r}
+cell_data_2 <- cell_data[which(cell_data$Pseudobulk %in% c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')),]
+cells_AUC_2 <- cells_AUC[,rownames(cell_data_2)]
+rss_values <- calcRSS(cells_AUC_2, cell_data_2$Pseudobulk)
+rss_values <- sweep(rss_values,2,colSums(rss_values),`/`)*100
+rownames(rss_values) <- gsub('_extended', '', rownames(rss_values))
+rss_values <- rss_values[,sort(colnames(rss_values))]
+rss_values_neuron <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b')]
+```
+
+```{r}
+rss_values <- cbind(rss_values_neuron, rss_values_glia)
+```
+
+```{r}
+saveRDS(rss_values, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/rss_values.RDS')
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$Pseudobulk)])/sum(rowSums(dgem[,grep(x, cell_data$Pseudobulk)]))*10^6+1)))
+}
+library(data.table)
+exp_mat <- t(rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+sel_rel <- c(positive)
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+exp_mat <- t(scale(t(exp_mat)))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+sel_rel_color[which(sel_rel %in% positive)] <- 'forestgreen'
+sel_rel_color[which(sel_rel %in% negative)] <- 'red'
+```
+
+```{r}
+saveRDS(sel_rel, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/HQ_regulons.RDS')
+saveRDS(rel_data, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/rel_data.RDS')
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 3), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/Regulon_dotplot_all_RSS_suppl_V2.pdf', g, width=18, height=6)
+```
+
+# 3. Combined dotplot
+
+```{r}
+human_old_r <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/HQ_regulons.RDS')
+human_r <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/HQ_regulons.RDS')
+mouse_r <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/HQ_regulons.RDS')
+```
+
+```{r}
+human_r[-which(human_r %in% human_old_r)]
+```
+
+```{r}
+human_old_r[-which(human_old_r %in% human_r)]
+```
+```{r}
+human_a_r <- c(human_r, human_old_r[-which(human_old_r %in% human_r)])
+human_a_r <- human_a_r[-which(human_a_r %in% c('IRF2_+', 'BCL6_+', 'KLF13_+', 'KLF12_+', 'FOXN3_+', 'ETS1_+'))]
+```
+
+```{r}
+mouse_r <- toupper(mouse_r)
+shared_grns <- mouse_r[which(mouse_r %in% human_a_r)]
+```
+
+### Dotplot for mouse
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_cell_annotation(loom)
+cell_data$Pseudobulk <- cell_data$GEX_conserved_cell_type
+```
+
+```{r}
+#rss_values <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/rss_values_combined.RDS')
+rss_values <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/cells_AUC_genebased.RDS')
+rownames(rss_values) <- toupper(rownames(rss_values))
+```
+
+```{r}
+rownames(dgem) <- toupper(rownames(dgem))
+expression_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$Pseudobulk)])/sum(rowSums(dgem[,grep(x, cell_data$Pseudobulk)]))*10^6+1)))
+}
+library(data.table)
+exp_mat <- t(rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+# If using AUC
+rss_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  rss_list[[x]] <- as.data.frame(t(rowMeans(rss_values[,grep(x, cell_data$Pseudobulk)])))
+}
+library(data.table)
+rss_values <- t(rbindlist(rss_list))
+colnames(rss_values) <- names(rss_list)
+rss_values <- rss_values[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+```{r}
+sel_rel <- shared_grns 
+order_list <- list()
+for (i in 1:ncol(rss_values)){
+  order_list[[i]] <- vector()
+}
+for (x in sel_rel){
+  i <- which.max(rss_values[x,])
+  order_list[[i]] <- c(order_list[[i]], x)
+}
+sel_rel <- unlist(order_list)
+```
+
+```{r}
+saveRDS(sel_rel, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/sel_rel_human.RDS')
+```
+
+```{r}
+rss_values <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/rss_values.RDS')
+rownames(rss_values) <- toupper(rownames(rss_values))
+rss_values <- rss_values[sel_rel, colnames(rss_values)[-which(colnames(rss_values) %in% c('ENDO', 'NP', 'L6 IT CAR3'))]]
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+exp_mat <- t(scale(t(exp_mat)))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 5), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg//Regulon_dotplot_human_overlap.pdf', g, width=18, height=6)
+```
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'Expression', fill = 'RSS'), colour="black",pch=21) +
+    scale_radius(range = c(1, 5), limits=c(0, 2)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg//Regulon_dotplot_human_overlap.pdf', g, width=18, height=6)
+```
+
+### Dotplot for human
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/SCENIC+_human_cortex_gene_based_AE.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cell_data <- get_cell_annotation(loom)
+cell_data$GEX_Seurat_cell_type <- gsub("MGE SNCG", "CGE SNCG", cell_data$GEX_Seurat_cell_type)
+cell_data$Pseudobulk <- cell_data$GEX_Seurat_cell_type
+```
+
+```{r}
+rss_values_new <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/rss_values.RDS')
+rss_values_old <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/rss_values.RDS')
+rss_values_old <- rss_values_old[-which(rownames(rss_values_old) %in% rownames(rss_values_new)),]
+rss_values <- rbind(rss_values_new, rss_values_old)
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$Pseudobulk)){
+  expression_list[[x]] <- as.data.frame(t(log(rowSums(dgem[,grep(x, cell_data$Pseudobulk)])/sum(rowSums(dgem[,grep(x, cell_data$Pseudobulk)]))*10^6+1)))
+}
+library(data.table)
+exp_mat <- t(rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+exp_mat <- exp_mat[,c('CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGE PVALB', 'MGE SST', 'L2/3 IT', 'L4 IT', 'L5 IT', 'L5 PT', 'NP', 'L6 IT', 'L6 IT CAR3', 'L6 CT', 'L6b', 'OPC', 'OL', 'AST', 'ENDO', 'MGL')]
+```
+
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/sel_rel_human.RDS')
+rss_values <- t(apply(rss_values, 1, function(x)(x-min(x))/(max(x)-min(x))))
+exp_mat <- t(scale(t(exp_mat)))
+rel_list <- sel_rel
+rel_data <- data.frame()
+for (rel in rel_list){
+  for (name in colnames(rss_values)){
+      tf <- strsplit(rel, split = "_")[[1]][1]
+      row_to_add <- t(c(rel, name, exp_mat[tf, name], rss_values[rel,name]))
+      rel_data <- rbind(rel_data, row_to_add)
+   }
+}
+colnames(rel_data) <- c('Regulon', 'Cell_type', 'Expression', 'RSS')
+sel_rel_color <- rep('grey',length(sel_rel))
+```
+
+```{r}
+rel_data$Regulon <- factor(rel_data$Regulon, levels=sel_rel)
+rel_data$Cell_type <- factor(rel_data$Cell_type, levels=rev(colnames(rss_values)))
+rel_data$RSS <- as.numeric(rel_data$RSS)
+rel_data$Expression <- as.numeric(rel_data$Expression)
+g <- ggplot(data = rel_data, mapping = aes_string(x = 'Cell_type', y = 'Regulon')) +
+    geom_point(mapping = aes_string(size = 'RSS', fill = 'Expression'), colour="black",pch=21) +
+    scale_radius(range = c(0.1, 5), limits=c(0, 1)) +
+    scale_fill_viridis_c() +
+    #scale_fill_gradientn(colours = colorspace::diverge_hcl(7)) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) + coord_flip() + theme(axis.text.x = element_text(colour = sel_rel_color))
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/Regulon_dotplot_mouse_overlap.pdf', g, width=18, height=6)
+```
+
+# 4. Conserved genes
+
+```{r}
+human_old_r <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/regulon_list.RDS')
+human_r <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/regulon_list.RDS')
+mouse_r <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/regulon_list.RDS')
+```
+
+```{r}
+human_old_r  <- human_old_r[-which(names(human_old_r) %in% names(human_r))]
+human_r <- c(human_r, human_old_r)
+names(mouse_r)  <- toupper(names(mouse_r))
+```
+
+```{r}
+# Basic function to convert mouse to human gene names
+require("biomaRt")
+human = useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl", mirror='asia')
+mouse = useEnsembl("ensembl", dataset = "mmusculus_gene_ensembl",  mirror='asia')
+convertMouseGeneList <- function(x, human, mouse){
+genesV2 = getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = x , mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=T)
+humanx <- unique(genesV2[, 2])
+# Print the first 6 genes found to the screen
+return(humanx)
+}
+```
+
+```{r}
+# If biomart doesnt work
+library(dplyr)
+mouse_human_genes = read.csv("http://www.informatics.jax.org/downloads/reports/HOM_MouseHumanSequence.rpt",sep="\t")
+
+convert_mouse_to_human <- function(gene_list){
+
+  output = c()
+
+  for(gene in gene_list){
+    class_key = (mouse_human_genes %>% filter(Symbol == gene & Common.Organism.Name=="mouse, laboratory"))[['DB.Class.Key']]
+    if(!identical(class_key, integer(0)) ){
+      human_genes = (mouse_human_genes %>% filter(DB.Class.Key == class_key & Common.Organism.Name=="human"))[,"Symbol"]
+      for(human_gene in human_genes){
+        output = append(output,human_gene)
+      }
+    }
+  }
+
+  return (output)
+}
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/sel_rel_human.RDS')
+df <- data.frame()
+t <- data.frame()
+for (r in sel_rel){
+  #print(r)
+  #m <- convertMouseGeneList(mouse_r[[r]], human, mouse)
+  m <- toupper(mouse_r[[r]])
+  h <- human_r[[r]]
+  ov <- sum(m %in% h)
+  x <- c(ov/length(m), ov/length(h))
+  x <- max(x)[1]
+  rx <- c(r, ov, x)
+  df <- rbind(df, rx)
+  y <- h[which(h %in% m)]
+  z <- cbind(rep(r, length(y)), y)
+  t <- rbind(t, z)
+}
+colnames(df) <- c('TF', 'Hits', 'Proportion')
+colnames(t) <- c('TF', 'Gene')
+write.table(t, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/conserved_tf_gene.tsv', sep='\t')
+```
+
+```{r}
+df$Proportion <- as.numeric(df$Proportion)
+df$TF <- factor(df$TF, levels=df$TF)
+g <- ggplot(df, aes(x=TF, y=Proportion))+
+  geom_bar(stat="identity", width=0.7, fill="red")+ theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/Gene_overlap_barplot.pdf', g, width=18, height=6)
+```
+
+# 5. Conserved regions
+
+```{r}
+human_old_r <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/eRegulons.bed')
+human_old_r <- human_old_r[grep('_\\+$', human_old_r[,4]),]
+human_old_r <- table(human_old_r[,4])
+names(human_old_r) <- gsub('_extended', '', names(human_old_r))
+
+human_r <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/eRegulons.bed')
+human_r <- human_r[grep('_\\+$', human_r[,4]),]
+human_r <- table(human_r[,4])
+names(human_r) <- gsub('_extended', '', names(human_r))
+
+human_old_r <- human_old_r[-which(names(human_old_r) %in% names(human_r))]
+human_r <- c(human_r, human_old_r)
+l <- names(human_r)
+names(human_r) <- substr(l,1,nchar(l)-2)
+```
+
+```{r}
+mouse_r <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/eRegulons.bed')
+mouse_r <- mouse_r[grep('_\\+$', mouse_r[,4]),]
+mouse_r <- table(mouse_r[,4])
+names(mouse_r) <- gsub('_extended', '', names(mouse_r))
+l <- names(mouse_r)
+names(mouse_r) <- substr(l,1,nchar(l)-2)
+names(mouse_r) <- toupper(names(mouse_r))
+```
+
+```{r}
+conserved_old_r <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human_old/eregulons/conserved_target_regions.tsv')
+conserved_old_r <- conserved_old_r[grep('_\\+$', conserved_old_r[,7]),]
+conserved_old_r <- table(conserved_old_r[,7])
+names(conserved_old_r) <- gsub('_extended', '', names(conserved_old_r))
+
+conserved_r <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/eregulons/conserved_target_regions.tsv')
+conserved_r <- conserved_r[grep('_\\+$', conserved_r[,7]),]
+conserved_r <- table(conserved_r[,7])
+names(conserved_r) <- gsub('_extended', '', names(conserved_r))
+
+conserved_old_r <- conserved_old_r[-which(names(conserved_old_r) %in% names(conserved_r))]
+conserved_r <- c(conserved_r, conserved_old_r)
+l <- names(conserved_r)
+names(conserved_r) <- substr(l,1,nchar(l)-2)
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/sel_rel_human.RDS')
+df <- data.frame()
+for (r in sel_rel){
+  ov <- conserved_r[r]
+  m <- mouse_r[r]
+  h <- human_r[r]
+  x <- c(ov/m, ov/h)
+  x <- max(x)[1]
+  r <- c(r, ov, x)
+  df <- rbind(df, r)
+}
+colnames(df) <- c('TF', 'Hits', 'Proportion')
+```
+
+```{r}
+df$Proportion <- as.numeric(df$Proportion)
+df$TF <- factor(df$TF, levels=df$TF)
+g <- ggplot(df, aes(x=TF, y=Proportion))+
+  geom_bar(stat="identity", width=0.7, fill="dodgerblue")+ theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+print(g)
+ggsave('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/SNARE_human/Region_overlap_barplot.pdf', g, width=18, height=6)
+```

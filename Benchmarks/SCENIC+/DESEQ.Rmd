@@ -1,0 +1,465 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Load data
+
+```{r}
+count_matrix <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/featureCounts_ATAC/bulk_ATAC_fragment_matrix.tsv')
+```
+
+```{r}
+colnames(count_matrix) <- count_matrix[1,]
+rownames(count_matrix) <- count_matrix[,1]
+count_matrix <- count_matrix[-1,-1]
+rownames(count_matrix) <- paste0(count_matrix[,1], ':', count_matrix[,2], '-', count_matrix[,3])
+count_matrix <- count_matrix[,6:ncol(count_matrix)]
+colnames(count_matrix) <- gsub('ATAC_', '', colnames(count_matrix))
+colnames(count_matrix) <- gsub('.bam', '', colnames(count_matrix))
+count_matrix[1:5,1:10]
+```
+
+```{r}
+library(DESeq2)
+count_matrix <- data.matrix(count_matrix)
+cell_lines <- unique(sapply(strsplit(colnames(count_matrix),split = "_"), "[", 1))
+res_list <- list()
+res_list_filt <- list()
+for (cl in cell_lines){
+        coldata <- as.data.frame(sapply(strsplit(colnames(count_matrix),split = "_"), "[", 1))
+        colnames(coldata) <- 'condition'
+        rownames(coldata) <- colnames(count_matrix)
+        coldata$condition[-which(coldata$condition == cl)] <- 'Other'
+        
+        dds <- DESeqDataSetFromMatrix(countData = count_matrix,
+                                    colData = coldata[colnames(count_matrix),,drop=FALSE],
+                                    design = ~ condition)
+        dds <- DESeq(dds)
+        res <- results(dds, contrast=c("condition",cl,"Other"))
+        cc_res <- res[complete.cases(res),]
+        res_list[[cl]] <- cc_res
+        print(dim(cc_res))
+        res_list_filt[[cl]] <- cc_res[which(cc_res$padj < 0.05),]
+        print(dim(cc_res[which(cc_res$padj < 0.05),]))
+}
+
+saveRDS(res_list, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/res_list.Rds')
+saveRDS(res_list_filt, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/res_list_filtered.Rds')
+```
+
+# Format scRNA-seq count matrix
+
+```{r}
+count_matrix <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/featureCounts_scRNA/count_matrix.tsv')
+colnames(count_matrix) <- count_matrix[1,]
+rownames(count_matrix) <- count_matrix[,1]
+count_matrix <- count_matrix[-1,-1]
+count_matrix <- count_matrix[,6:ncol(count_matrix)]
+colnames(count_matrix) <- gsub('.sorted.bam', '', colnames(count_matrix))
+colnames(count_matrix) <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/single-cell_bam/rna/', '', colnames(count_matrix))
+count_matrix[1:5,1:10]
+```
+```{r}
+count_matrix <- cbind(rownames(count_matrix), count_matrix)
+colnames(count_matrix)[1] <- 'index'
+count_matrix[1:5,1:10]
+```
+
+```{r}
+library(feather)
+write_feather(count_matrix, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/scRNA_count_matrix.feather')
+```
+
+```{r}
+### Create the minimal loom file
+library(SCopeLoomR)
+file.name <- "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/scRNA_count_matrix.loom"
+build_loom(
+  file.name=file.name,
+  dgem=dgem,
+  title="DPLC",
+  genome="Human" # Just for user information, not used internally
+)
+
+loom <- open_loom(file.name)
+# Hierarchy
+add_hierarchy(loom = loom, hierarchy = create_hierarchy(level.1.name = "DPLC", level.2.name = "vsn"))
+```
+
+# Comparing DESEQ and cisTopic
+
+```{r}
+fix_names <- function(region_names){
+  seqnames <- sapply(strsplit(region_names, split = ":"), "[", 1)
+  coords <- sapply(strsplit(region_names, split = ":"), "[", 2)
+  start <- as.numeric(sapply(strsplit(coords, split = "-"), "[", 1))+1
+  end <- sapply(strsplit(coords, split = "-"), "[", 2)
+  names <- paste0(seqnames, ':', start, '-', end)
+  return(names)
+}
+```
+
+```{r}
+path_to_files <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/pycisTopic/DARs/all_tsv/'
+files <- list.files(path_to_files)
+res_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/res_list_filtered.Rds')
+names <- gsub('.tsv','', files)
+cormat <- list()
+names(res_list) <- gsub('-','', names(res_list))
+for (name1 in names){
+  print(name1)
+  ds_data <- as.data.frame(res_list[[name1]][,c(2,6)])
+  colnames(ds_data) <- c('DESEQ_Log2FC', 'DESEQ_Adjusted_pval')
+  cvec <- vector()
+  cvec_scaled <- vector()
+  for (name in names){
+      path_to_file <- paste0(path_to_files, name, '.tsv')
+      pc_data <- read.table(path_to_file)[,1:2]
+      colnames(pc_data) <- paste0('pycisTopic_', colnames(pc_data))
+      rownames(pc_data) <- fix_names(rownames(pc_data))
+      combined <- merge(pc_data, ds_data, by=0, all=FALSE)
+      rownames(combined) <- combined[,1]
+      combined <- combined[,-1]
+      cvec <- c(cvec, cor(combined$pycisTopic_Log2FC, combined$DESEQ_Log2FC))
+  }
+  cormat[[name1]] <- cvec
+  print('Done!')
+}
+```
+
+```{r}
+cormat_combined <- data.frame(do.call(rbind, cormat))
+colnames(cormat_combined) <- rownames(cormat_combined)
+```
+
+Get correlation between samples and cluster.
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+cormat <- cormat[,rev(colnames(cormat))]
+```
+
+Make correlation heatmap.
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ.RDS')
+```
+
+
+```{r}
+path_to_files <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/pycisTopic/DARs/all_tsv/'
+files <- list.files(path_to_files)
+res_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/res_list_filtered.Rds')
+names <- gsub('.tsv','', files)
+cormat <- list()
+names(res_list) <- gsub('-','', names(res_list))
+for (name1 in names){
+  print(name1)
+  ds_data <- as.data.frame(res_list[[name1]][,c(2,6)])
+  colnames(ds_data) <- c('DESEQ_Log2FC', 'DESEQ_Adjusted_pval')
+  cvec <- vector()
+  cvec_scaled <- vector()
+  for (name in names){
+      path_to_file <- paste0(path_to_files, name, '.tsv')
+      pc_data <- read.table(path_to_file)[,1:2]
+      pc_data <- pc_data[which(pc_data[,2]<0.05),]
+      colnames(pc_data) <- paste0('pycisTopic_', colnames(pc_data))
+      rownames(pc_data) <- fix_names(rownames(pc_data))
+      combined <- merge(pc_data, ds_data, by=0, all=FALSE)
+      rownames(combined) <- combined[,1]
+      combined <- combined[,-1]
+      cvec <- c(cvec, cor(combined$pycisTopic_Log2FC, combined$DESEQ_Log2FC))
+  }
+  cormat[[name1]] <- cvec
+  print('Done!')
+}
+```
+
+```{r}
+cormat_combined <- data.frame(do.call(rbind, cormat))
+colnames(cormat_combined) <- rownames(cormat_combined)
+```
+
+Get correlation between samples and cluster.
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+cormat <- cormat[,rev(colnames(cormat))]
+```
+
+Make correlation heatmap.
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/DARs_correlation.pdf')
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+dev.off()
+saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_pc.RDS')
+```
+
+
+```{r}
+tr_df <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/pycisTopic/Topic_region.tsv')
+res_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/res_list_filtered.Rds')
+cormat <- list()
+cormat_scaled <- list()
+cormat_log <- list()
+names(res_list) <- gsub('-','', names(res_list))
+for (name1 in names){
+  print(name1)
+  ds_data <- as.data.frame(res_list[[name1]][,c(2,6)])
+  colnames(ds_data) <- c('DESEQ_Log2FC', 'DESEQ_Adjusted_pval')
+  cvec <- vector()
+  cvec_scaled <- vector()
+  cvec_log <- vector()
+  for (name in colnames(tr_df)){
+      pc_data <- tr_df[,name,drop=FALSE]
+      rownames(pc_data) <- fix_names(rownames(pc_data))
+      combined <- merge(pc_data, ds_data, by=0, all=FALSE)
+      rownames(combined) <- combined[,1]
+      combined <- combined[,-1]
+      cvec <- c(cvec, cor(combined[,name], combined$DESEQ_Log2FC))
+      cvec_scaled <- c(cvec_scaled, cor(scale(combined[,name]), scale(combined$DESEQ_Log2FC)))
+      cvec_log <- c(cvec_log, cor(log(combined[,name]+10^-100), scale(combined$DESEQ_Log2FC)))
+  }
+  cormat[[name1]] <- cvec
+  cormat_scaled[[name1]] <- cvec_scaled
+  cormat_log[[name1]] <- cvec_log
+  print('Done!')
+}
+```
+
+```{r}
+cormat_combined <- data.frame(do.call(rbind, cormat_log))
+colnames(cormat_combined) <- paste0('Topic', 1:ncol(cormat_combined)) 
+rownames(cormat_combined) <- gsub('-','', names(res_list))
+```
+
+Get correlation between samples and cluster.
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+cormat <- cormat[,rev(colnames(cormat_scaled))]
+```
+
+Make correlation heatmap.
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/Topics_correlation_log.pdf')
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+dev.off()
+saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_topic_log.RDS')
+```
+
+[1] "GM12878"
+[1] "Done!"
+[1] "HCT116"
+[1] "Done!"
+[1] "HepG2"
+[1] "Done!"
+[1] "IMR90"
+[1] "Done!"
+[1] "K562"
+[1] "Done!"
+[1] "MCF7"
+[1] "Done!"
+[1] "Panc1"
+[1] "Done!"
+[1] "PC3"
+[1] "Done!"
+
+```{r}
+cormat <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_topic_log.RDS')
+cormat <- cormat[,-which(colnames(cormat) == 'Var1')]
+rownames(cormat) <- c('GM12878', 'HCT116', 'HepG2', 'IMR90', 'K562', 'MCF7', 'Panc1', 'PC3')
+colnames(cormat) <- c('LQ (1)', 'LQ (2)', 'PC3 (3)', 'LQ (4)', 'Panc1 (5)', 'LQ (6)', 'LQ (7)', 'LQ (8)', 'IMR90 (9)', 'LQ (10)', 'LQ (11)', 'LQ (12)', 'General (13)', 'LQ (14)', 'LQ (15)', 'HepG2 (16)', 'Panc1 (17)', 'General (18)', 'K562 (19)','LQ (20)','IMR90 (21)', 'LQ (22)', 'LQ (23)','PC3 (24)', 'LQ (25)','HCT116 (26)', 'LQ (27)', 'GM12878 (28)', 'LQ (29)',  'HepG2 (30)', 'MCF7 (31)', 'LQ (32)', 'LQ (33)', 'IMR90 (34)', 'MCF7 (35)', 'LQ (36)', 'LQ (37)', 'LQ (38)', 'GM12878 (39)', 'LQ (40)')
+```
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat <- cormat[c(grep('PC3', colnames(cormat)),grep('Panc1', colnames(cormat)), grep('MCF7', colnames(cormat)), grep('K562', colnames(cormat)), grep('IMR90', colnames(cormat)), grep('HepG2', colnames(cormat)), grep('HCT116', colnames(cormat)), grep('GM12878', colnames(cormat)), grep('General', colnames(cormat)), grep('LQ', colnames(cormat)))]
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/Topics_correlation_log_ordered.pdf', width=16, height=6)
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+dev.off()
+#saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_topic_log.RDS')
+```
+
+
+```{r}
+path_to_files <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/pycisTopic/DARs/all_tsv/'
+files <- list.files(path_to_files)
+res_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/res_list.Rds')
+names <- gsub('.tsv','', files)
+pycisTopic_DARs <- list()
+DESEQ_DARs <- list()
+names(res_list) <- gsub('-','', names(res_list))
+library(bayesbio)
+
+for (name1 in names){
+  print(name1)
+  ds_data <- as.data.frame(res_list[[name1]][,c(2,6)])
+  colnames(ds_data) <- c('DESEQ_Log2FC', 'DESEQ_Adjusted_pval')
+  ds_data <- ds_data[rev(order(ds_data[,1])),]
+  #ds_data <- pc_data[which(ds_data[,2]<0.1),]
+  path_to_file <- paste0(path_to_files, name1, '.tsv')
+  pc_data <- read.table(path_to_file)[,1:2]
+  #pc_data <- pc_data[which(pc_data[,2]<0.05),]
+  colnames(pc_data) <- paste0('pycisTopic_', colnames(pc_data))
+  rownames(pc_data) <- fix_names(rownames(pc_data))
+  pc_data <- pc_data[rev(order(pc_data[,1])),]
+  pycisTopic_DARs[[name1]] <- rownames(pc_data)[1:50000]
+  DESEQ_DARs[[name1]] <- rownames(ds_data)[1:50000]
+  
+}
+
+
+jaccard_list <- list()
+for (name1 in names){
+  a <- DESEQ_DARs[[name1]]
+  v <- vector()
+  for (name in names){
+    b <- pycisTopic_DARs[[name]]
+    v <- c(v, jaccardSets(a,b))
+  }
+  jaccard_list[[name1]] <- v
+}
+```
+
+```{r}
+cormat_combined <- data.frame(do.call(rbind, jaccard_list))
+colnames(cormat_combined) <- rownames(cormat_combined)
+```
+
+Get correlation between samples and cluster.
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+cormat <- cormat[,rev(colnames(cormat))]
+```
+
+Make correlation heatmap.
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(0,0.12), space = "Lab", 
+    name="Pearson\nCorrelation") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/jaccard_list_50K.RDS')
+```

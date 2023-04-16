@@ -1,0 +1,710 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+# 0. Create template
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/ScoMAP/'
+```
+
+```{r}
+suppressWarnings(library(ScoMAP))
+# Read template
+pathToJpeg <- paste0(path, 'BarrelCortexMap.png') # Path to image
+k <- 8 # Number of spatial domains
+VM <- readTemplate(pathToJpeg, k, bgThr=0.93, neighbours=c(20, 10, 7), refineRound=3)
+# Annotate spatial sections
+clusterAnnotation <- c('AST','L2/3', 'L4', 'L4','L5', 'L6', 'L6b', 'WM')
+names(clusterAnnotation) <- c(1:length(clusterAnnotation))
+VM <- addClusterAnnotation(VM, clusterAnnotation)
+Spatial_ColVar <- unique(VM$cluster_refined_color)
+names(Spatial_ColVar) <- clusterAnnotation
+pdf(paste0(path, 'PixelMap.pdf'))
+plotAnnotatedVM(VM, colVar=Spatial_ColVar, inset=c(-0.35,0))
+dev.off()
+```
+```{r}
+rna <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/data/MO_GEX_seurat_cortex_only.RDS')
+intercalateCells <- function(VM,
+                             targetAnnot,
+                             subclusters){
+  if (is.null(VM$cluster_annot)){
+    stop('Please, provide cluster annotation with addClusterAnnotation().')
+  }
+  subclusters <- rep(subclusters, sum(VM$cluster_annot == targetAnnot))[1:sum(VM$cluster_annot == targetAnnot)][sample(1:sum(VM$cluster_annot == targetAnnot))]
+  VM$cluster_annot[which(VM$cluster_annot == targetAnnot)] <- subclusters
+  return(as.data.frame(VM))
+}
+clusterAnnotation <- c('AST','L2/3', 'L4', 'L4','L5', 'L6', 'L6b', 'WM')
+VM <- intercalateCells(VM, targetAnnot='AST', subclusters=c(rep('AST', 15),'CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGL','ENDO')[sample(1:20)])
+VM <- intercalateCells(VM, targetAnnot='L2/3', subclusters=c(rep('L2/3 IT', 15), 'CGE LAMP5', 'CGE SNCG', 'CGE VIP', 'MGL','ENDO')[sample(1:20)])
+VM <- intercalateCells(VM, targetAnnot='L4', subclusters=c(rep('L4 IT', 16), 'MGE PVALB', 'MGE SST', 'MGL','ENDO')[sample(1:20)])
+VM <- intercalateCells(VM, targetAnnot='L5', subclusters=c(rep('L5 IT', 8), rep('NP', 4),'L5 PT', 'L5 PT', 'L5 PT', 'L5 PT', 'MGE PVALB', 'MGE SST', 'MGL','ENDO')[sample(1:20)])
+VM <- intercalateCells(VM, targetAnnot='L6', subclusters=c(rep('L6 IT', 6), rep('L6 CT', 6), rep('NP', 4), 'MGE PVALB', 'MGE SST', 'MGL','ENDO')[sample(1:20)])
+VM <- intercalateCells(VM, targetAnnot='L6b', subclusters=c(rep('L6b', 16), 'MGE PVALB', 'MGE SST', 'MGL','ENDO')[sample(1:20)])
+VM <- intercalateCells(VM, targetAnnot='WM', subclusters=c(rep('OL', 18), 'OPC', 'OPC')[sample(1:20)])
+```
+
+```{r}
+# Resulting template
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')
+c2 <- brewer.pal(9, 'Blues')
+c3 <- brewer.pal(8, 'Oranges')
+colvar <- c(c3[2], 'purple', c1[2], c1[4], c1[6], c2[2], c2[3], c2[4], c2[5], c2[6], c2[7], c2[8], 'navy', c1[7], c1[8], 'forestgreen', c2[9], 'deeppink', 'lightpink', c3[3], 'lightgreen', c3[5], c3[6])
+names(colvar) <- sort(unique(cell_data$GEX_conserved_cell_type))
+plotAnnotatedVM(VM, colVar=colvar, inset=c(-0.35,0))
+```
+
+```{r}
+VM <- selectLandmark(VM, reference_group='L2/3 IT', type='horizontal_line', landmark_name='topLayer')
+plotAnnotatedVM(VM, colVar=colvar, inset=c(-0.35,0), show.landmark = T)
+```
+
+```{r}
+saveRDS(VM, file=paste0(path, 'VM.RDS'))
+```
+
+# 1. Map scRNA-seq
+
+```{r}
+set.seed(555)
+library(destiny)
+library(Seurat)
+Seurat_RNA <- rna
+Ex_cells <- Seurat_RNA@meta.data[c(grep('L', Seurat_RNA@meta.data$conserved_cell_type)),]
+Ex_cells <- Ex_cells[-grep('MGE', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('MGL', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('OL', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('CGE', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('CAR3', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('PT', Ex_cells$conserved_cell_type),]
+Ex_cells <- rownames(Ex_cells)
+Seurat_RNA <- subset(Seurat_RNA, cells=Ex_cells)
+# Pseudotime
+nPC <- 52
+Ex_DiffussionMap <- DiffusionMap(as.matrix(Seurat_RNA@reductions$harmony@cell.embeddings[,1:nPC]))
+DPT <- DPT(Ex_DiffussionMap)
+# Check results
+Ex_DPT <- -rank(DPT$dpt) # We take the 1st DC
+Ex_RNA <- data.frame(Cell_type=as.vector(unlist(Seurat_RNA@meta.data[Ex_cells, 'conserved_cell_type'])), Landmark=rep('topLayer', length(Ex_cells)), Pseudotime=Ex_DPT, PosLandmark=rep('After', length(Ex_cells)),row.names = Ex_cells, stringsAsFactors = FALSE)
+Ex_RNA$Cell_type <- factor(Ex_RNA$Cell_type, levels = c('L2/3 IT', 'L4 IT', 'L5 PT', 'L5 IT', 'L6 IT', 'L6 CT', 'L6b', 'NP'))
+colvars <- colvar[c('L2/3 IT', 'L4 IT', 'L5 PT', 'L5 IT', 'L6 IT', 'L6 CT', 'L6b', 'NP')]
+names(colvars) <- c('L2/3 IT', 'L4 IT', 'L5 PT', 'L5 IT', 'L6 IT', 'L6 CT', 'L6b', 'NP')
+library(ggbeeswarm)
+ggplot(Ex_RNA, aes(x = Pseudotime, y = Cell_type, colour = Cell_type)) + geom_quasirandom(groupOnX = FALSE) + theme_classic() + xlab("Diffusion map pseudotime (dpt)") + ylab("Timepoint") + ggtitle("Cells ordered by diffusion map pseudotime") + scale_colour_manual(name = "cell type",values = colvars)
+Seurat_RNA <- AddMetaData(rna, Ex_RNA)
+FeaturePlot(Seurat_RNA, 'Pseudotime',  reduction='umap_harmony')
+cells <- Ex_cells
+```
+
+```{r}
+set.seed(555)
+library(destiny)
+library(Seurat)
+Seurat_RNA <- rna
+Ex_cells <- Seurat_RNA@meta.data[which(Seurat_RNA@meta.data$conserved_cell_type %in% c('OL', 'OPC')),]
+Ex_cells <- rownames(Ex_cells)
+Seurat_RNA <- subset(Seurat_RNA, cells=Ex_cells)
+# Pseudotime
+nPC <- 52
+Ex_DiffussionMap <- DiffusionMap(as.matrix(Seurat_RNA@reductions$harmony@cell.embeddings[,1:nPC]))
+DPT <- DPT(Ex_DiffussionMap)
+# Check results
+Ex_DPT <- rank(DPT$dpt) # We take the 1st DC
+Ol_RNA <- data.frame(Cell_type=as.vector(unlist(Seurat_RNA@meta.data[Ex_cells, 'conserved_cell_type'])), Landmark=rep('topLayer', length(Ex_cells)), Pseudotime=Ex_DPT, PosLandmark=rep('After', length(Ex_cells)),row.names = Ex_cells, stringsAsFactors = FALSE)
+Ol_RNA$Cell_type <- factor(Ol_RNA$Cell_type, levels = c('OL', 'OPC'))
+colvars <- colvar[c('OL', 'OPC')]
+names(colvars) <- c('OL', 'OPC')
+library(ggbeeswarm)
+ggplot(Ol_RNA, aes(x = Pseudotime, y = Cell_type, colour = Cell_type)) + geom_quasirandom(groupOnX = FALSE) + theme_classic() + xlab("Diffusion map pseudotime (dpt)") + ylab("Timepoint") + ggtitle("Cells ordered by diffusion map pseudotime") + scale_colour_manual(name = "cell type",values = colvars)
+Seurat_RNA <- AddMetaData(rna, Ol_RNA)
+FeaturePlot(Seurat_RNA, 'Pseudotime',  reduction='umap_harmony')
+cells <- c(cells, Ex_cells)
+```
+
+```{r}
+Seurat_RNA <- rna
+Other_cells <- rownames(Seurat_RNA@meta.data)[-which(rownames(Seurat_RNA@meta.data) %in% cells)]
+Other_RNA <- data.frame(Cell_type=as.vector(unlist(Seurat_RNA@meta.data[Other_cells, 'conserved_cell_type'])), Landmark=rep('None', length(Other_cells)), Pseudotime=rep('None', length(Other_cells)), PosLandmark=rep('None', length(Other_cells)), row.names = Other_cells)
+```
+
+```{r}
+VM <- readRDS(paste0(path,'VM.RDS'))
+RM_RNA <-rbind(Ex_RNA, Ol_RNA, Other_RNA)
+RM_RNA$Spatial_cluster <- as.vector(unlist(RM_RNA$Cell_type))
+# We don't wEx to map the cell contamination
+saveRDS(RM_RNA, file=paste0(path,'RM_RNA.RDS'))
+```
+
+# 2. Map scATAC-seq
+
+```{r}
+atac <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/Signac/Mouse_brain.RDS')
+nm <- colnames(atac)
+atac_bc <- substr(nm, nchar(nm)-17, nchar(nm))
+atac_sample <- substr(nm, 1, nchar(nm)-19)
+nm <- paste0(atac_bc, '___', atac_sample)
+atac <- RenameCells(atac, new.names=nm)
+topics <- t(read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/pycisTopic/harmony_cell_topic.tsv', sep='\t'))
+rownames(topics) <- topics[,1]
+colnames(topics) <- topics[1,]
+topics <- topics[-1,-1]
+topics <- apply(topics, 1, as.numeric)
+topics <- topics[,colnames(atac)]
+conserved_cell_type <- atac$GEX_consensus_cell_type
+conserved_cell_type[which(conserved_cell_type == 'CGE_LAMP5')] <- 'CGE LAMP5'
+conserved_cell_type[which(conserved_cell_type == 'CGE_VIP')] <- 'CGE VIP'
+conserved_cell_type[which(conserved_cell_type == 'L2/3IT')] <- 'L2/3 IT'
+conserved_cell_type[which(conserved_cell_type == 'L4IT')] <- 'L4 IT'
+conserved_cell_type[which(conserved_cell_type == 'L5ET')] <- 'L5 PT'
+conserved_cell_type[which(conserved_cell_type == 'L5IT')] <- 'L5 IT'
+conserved_cell_type[which(conserved_cell_type == 'L6CT')] <- 'L6 CT'
+conserved_cell_type[which(conserved_cell_type == 'L6IT')] <- 'L6 IT'
+conserved_cell_type[which(conserved_cell_type == 'L6IT_Car3')] <- 'L6 IT CAR3'
+conserved_cell_type[which(conserved_cell_type == 'MGE_PVALB')] <- 'MGE PVALB'
+conserved_cell_type[which(conserved_cell_type == 'MGE_SNCG')] <- 'MGE SNCG'
+conserved_cell_type[which(conserved_cell_type == 'MGE_SST')] <- 'MGE SST'
+conserved_cell_type[which(conserved_cell_type == 'PER')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'PVM')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'VEC')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'VLMC')] <- 'ENDO'
+conserved_cell_type[which(conserved_cell_type == 'ABC')] <- 'ENDO'
+atac$conserved_cell_type <- conserved_cell_type
+```
+
+```{r}
+set.seed(555)
+library(destiny)
+library(Seurat)
+Seurat_ATAC <- atac
+Ex_cells <- Seurat_ATAC@meta.data[c(grep('L', Seurat_ATAC@meta.data$conserved_cell_type)),]
+Ex_cells <- Ex_cells[-grep('MGE', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('MGL', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('OL', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('CGE', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('CAR3', Ex_cells$conserved_cell_type),]
+Ex_cells <- Ex_cells[-grep('PT', Ex_cells$conserved_cell_type),]
+Ex_cells <- rownames(Ex_cells)
+Seurat_ATAC <- subset(Seurat_ATAC, cells=Ex_cells)
+topics <- topics[,Ex_cells]
+# Pseudotime
+Ex_DiffussionMap <- DiffusionMap(t(as.matrix(topics)))
+DPT <- DPT(Ex_DiffussionMap)
+# Check results
+Ex_DPT <- -rank(DPT$dpt) # We take the 1st DC
+Ex_ATAC <- data.frame(Cell_type=as.vector(unlist(Seurat_ATAC@meta.data[Ex_cells, 'conserved_cell_type'])), Landmark=rep('topLayer', length(Ex_cells)), Pseudotime=Ex_DPT, PosLandmark=rep('After', length(Ex_cells)),row.names = Ex_cells, stringsAsFactors = FALSE)
+Ex_ATAC$Cell_type <- factor(Ex_ATAC$Cell_type, levels = c('L2/3 IT', 'L4 IT', 'L5 PT', 'L5 IT', 'L6 IT', 'L6 CT', 'L6b', 'NP'))
+colvars <- colvar[c('L2/3 IT', 'L4 IT', 'L5 PT', 'L5 IT', 'L6 IT', 'L6 CT', 'L6b', 'NP')]
+names(colvars) <- c('L2/3 IT', 'L4 IT', 'L5 PT', 'L5 IT', 'L6 IT', 'L6 CT', 'L6b', 'NP')
+library(ggbeeswarm)
+ggplot(Ex_ATAC, aes(x = Pseudotime, y = Cell_type, colour = Cell_type)) + geom_quasirandom(groupOnX = FALSE) + theme_classic() + xlab("Diffusion map pseudotime (dpt)") + ylab("Timepoint") + ggtitle("Cells ordered by diffusion map pseudotime") + scale_colour_manual(name = "cell type",values = colvars)
+Seurat_ATAC <- AddMetaData(rna, Ex_ATAC)
+cells <- Ex_cells
+
+set.seed(555)
+library(destiny)
+library(Seurat)
+Seurat_ATAC <- atac
+Ex_cells <- Seurat_ATAC@meta.data[which(Seurat_ATAC@meta.data$conserved_cell_type %in% c('OL', 'OPC')),]
+Ex_cells <- rownames(Ex_cells)
+Seurat_ATAC <- subset(Seurat_ATAC, cells=Ex_cells)
+topics <- t(read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/pycisTopic/harmony_cell_topic.tsv', sep='\t'))
+rownames(topics) <- topics[,1]
+colnames(topics) <- topics[1,]
+topics <- topics[-1,-1]
+topics <- apply(topics, 1, as.numeric)
+topics <- topics[,colnames(atac)]
+topics <- topics[,Ex_cells]
+# Pseudotime
+Ex_DiffussionMap <- DiffusionMap(t(as.matrix(topics)))
+DPT <- DPT(Ex_DiffussionMap)
+# Check results
+Ex_DPT <- rank(DPT$dpt) # We take the 1st DC
+Ol_ATAC <- data.frame(Cell_type=as.vector(unlist(Seurat_ATAC@meta.data[Ex_cells, 'conserved_cell_type'])), Landmark=rep('topLayer', length(Ex_cells)), Pseudotime=Ex_DPT, PosLandmark=rep('After', length(Ex_cells)),row.names = Ex_cells, stringsAsFactors = FALSE)
+Ol_ATAC$Cell_type <- factor(Ol_ATAC$Cell_type, levels = c('OL', 'OPC'))
+colvars <- colvar[c('OL', 'OPC')]
+names(colvars) <- c('OL', 'OPC')
+library(ggbeeswarm)
+ggplot(Ol_ATAC, aes(x = Pseudotime, y = Cell_type, colour = Cell_type)) + geom_quasirandom(groupOnX = FALSE) + theme_classic() + xlab("Diffusion map pseudotime (dpt)") + ylab("Timepoint") + ggtitle("Cells ordered by diffusion map pseudotime") + scale_colour_manual(name = "cell type",values = colvars)
+Seurat_ATAC <- AddMetaData(rna, Ol_ATAC)
+cells <- c(cells, Ex_cells)
+```
+
+```{r}
+Seurat_ATAC <- atac
+Other_cells <- rownames(Seurat_ATAC@meta.data)[-which(rownames(Seurat_ATAC@meta.data) %in% cells)]
+Other_ATAC <- data.frame(Cell_type=as.vector(unlist(Seurat_ATAC@meta.data[Other_cells, 'conserved_cell_type'])), Landmark=rep('None', length(Other_cells)), Pseudotime=rep('None', length(Other_cells)), PosLandmark=rep('None', length(Other_cells)), row.names = Other_cells)
+```
+
+```{r}
+VM <- readRDS(paste0(path,'VM.RDS'))
+RM_ATAC <-rbind(Ex_ATAC, Ol_ATAC, Other_ATAC)
+RM_ATAC$Spatial_cluster <- as.vector(unlist(RM_ATAC$Cell_type))
+# We don't wEx to map the cell contamination
+saveRDS(RM_ATAC, file=paste0(path,'RM_ATAC.RDS'))
+```
+
+# 3. Map things
+
+```{r}
+.mapCells_int <- function(VM,
+                          RM,
+                          target_cluster,
+                          nr_bin=10,
+                          seed=123){
+  # Check
+  if(!target_cluster %in% RM$Spatial_cluster){
+    stop('The specified cluster is not defined in the real map (`RM$Spatial_cluster`).')
+  }
+  
+  if(!target_cluster %in% VM$cluster_annot){
+    print(target_cluster)
+    stop('The specified cluster is not defined in the virtual map (`VM$cluster_annot`).')
+  }
+  
+  # Set seed (random sampling)
+  set.seed(seed)
+  # Prepare data for target type
+  target_RM <- RM[which(RM$Spatial_cluster == target_cluster),]
+  target_VM <- VM[which(VM$cluster_annot==target_cluster),]
+  rownames(target_VM) <- paste0(as.vector(unlist(target_VM[,'x'])), '_', as.vector(unlist(target_VM[,'y'])))
+  # Take landmark
+  target_landmark_RM <- unique(target_RM$Landmark)
+  
+  if(target_landmark_RM == 'None'){
+    print(paste0('The target cluster ', target_cluster, ' will be ramdomly mapped.'))
+    if (nrow(target_RM) > nrow(target_VM)){
+      cell_assigment <- rownames(target_RM)[sample(nrow(target_VM))]
+    } else {
+      if (nrow(target_VM)-nrow(target_RM) > nrow(target_RM)){
+        cell_assigment <- sample(c(sample(rownames(target_RM), nrow(target_RM)), sample(rownames(target_RM), nrow(target_VM)-nrow(target_RM), replace=TRUE)))
+      } else {
+        cell_assigment <- sample(c(sample(rownames(target_RM), nrow(target_RM)), sample(rownames(target_RM), nrow(target_VM)-nrow(target_RM))))
+      }
+    }
+    names(cell_assigment) <- rownames(target_VM)
+    target_RM$PseudotimeRank <- rep('0', nrow(target_RM))
+    distance2landmark <- rep('0', nrow(target_VM))
+    names(distance2landmark) <- rownames(target_VM)
+    
+  }
+  else {
+    print(paste0('The target cluster ', target_cluster, ' will be mapped to a spatial axis.'))
+    # Check
+    if(!target_landmark_RM %in% VM$is.landmark){
+      stop('The landmark specified in the real map (`RM$Landmark`) does not exist in the virtual map (`VM$is.landmark`)')
+    }
+    # Calculate distance of virtual cell to landmark
+    landmark <- VM[which(VM$is.landmark == target_landmark_RM), c('x', 'y')]
+    if (nrow(landmark) == 1){
+      distance2landmark <- sapply(1:nrow(target_VM), function (i) sqrt(sum((target_VM[i,c('x','y')]-landmark)^2)))
+    } else if (nrow(landmark) > 1){
+      distance2landmark <- as.vector(unlist(lapply(1:nrow(target_VM), function (i) min(sqrt(rowSums((rbind(target_VM[i,c('x','y')][rep(1, nrow(landmark)), ])-landmark)^2))))))
+    }
+    names(distance2landmark) <- rownames(target_VM)
+    distance2landmark <- distance2landmark[order(distance2landmark)]
+    denom_VM <- ceiling(nrow(target_VM)/nr_bin)
+    VM_bin <- split(distance2landmark, ceiling(seq_along(distance2landmark)/denom_VM))
+    # Make bins on pseudotime
+    pseudotime_order <- as.numeric(target_RM$Pseudotime)
+    names(pseudotime_order) <- rownames(target_RM)
+    if (unique(as.vector(unlist(target_RM$PosLandmark))) == 'Before'){
+      pseudotime_order <- -pseudotime_order
+    }
+    pseudotime_order <- rank(pseudotime_order)
+    pseudotime_order <- pseudotime_order[order(pseudotime_order)]
+    target_RM[names(pseudotime_order), 'PseudotimeRank'] <- pseudotime_order
+    denom_RM <- ceiling(nrow(target_RM)/nr_bin)
+    RM_bin <- split(pseudotime_order, ceiling(seq_along(pseudotime_order)/denom_RM))
+    # Map cells
+    if (denom_VM < denom_RM){
+      if (sum(lengths(RM_bin) > denom_VM) >= nr_bin){
+        cell_assigment <- as.vector(unlist(lapply(1:length(VM_bin), function(i) sample(names(RM_bin[[i]]), length(VM_bin[[i]])))))
+      } else{
+        cell_assigment <- as.vector(unlist(lapply(1:length(VM_bin), function(i) sample(names(RM_bin[[i]]), length(VM_bin[[i]]), replace=TRUE))))
+      }
+    } else {
+      cell_assigment <- as.vector(unlist(sapply(1:length(VM_bin), function(i)  sample(c(names(RM_bin[[i]]), sample(names(RM_bin[[i]]), length(VM_bin[[i]])-length(RM_bin[[i]]), replace=TRUE))))))
+    } 
+    names(cell_assigment) <- as.vector(unlist(lapply(VM_bin, names)))
+  }
+  
+  if(!'RM_assignment' %in% colnames(VM)){
+    VM$RM_assignment <- rep(NA, nrow(VM))
+    VM$RM_cell_type <- rep(NA, nrow(VM))
+    VM$RM_landmark <- rep(NA, nrow(VM))
+    VM$RM_pseudotime <- rep(0, nrow(VM))
+    VM$RM_posLandmark <- rep(NA, nrow(VM))
+    VM$RM_spatial_cluster <- rep(NA, nrow(VM))
+    VM$DistanceFromLandmark- rep(0, nrow(VM))
+    VM$PseudotimeRank- rep(0, nrow(VM))
+  }
+  VM[names(cell_assigment), 'RM_assignment'] <- cell_assigment
+    VM[names(cell_assigment), 'RM_cell_type'] <- as.vector(unlist(target_RM[cell_assigment,'Cell_type']))
+    VM[names(cell_assigment), 'RM_landmark'] <- as.vector(unlist(target_RM[cell_assigment,'Landmark']))
+    VM[names(cell_assigment), 'RM_pseudotime'] <- as.vector(unlist(target_RM[cell_assigment,'Pseudotime']))
+    VM[names(cell_assigment), 'RM_posLandmark'] <- as.vector(unlist(target_RM[cell_assigment,'PosLandmark']))
+    VM[names(cell_assigment), 'RM_spatial_cluster'] <- as.vector(unlist(target_RM[cell_assigment,'Spatial_cluster']))
+    VM[names(distance2landmark), 'DistanceFromLandmark'] <- distance2landmark
+    VM[names(cell_assigment), 'PseudotimeRank'] <- as.vector(unlist(target_RM[cell_assigment,'PseudotimeRank']))
+    
+    return(as.data.frame(VM))
+}
+
+mapCells <- function(VM,
+                     RM,
+                     target_clusters=NULL,
+                     nr_bin=10,
+                     seed=123){
+  if(is.null(target_clusters)){
+    target_clusters <- unique(RM$Spatial_cluster)[!is.na(unique(RM$Spatial_cluster))]
+  }
+  for (target_cluster in target_clusters){
+    VM <- .mapCells_int(VM, RM, target_cluster, nr_bin, seed)
+  }
+  return(VM)
+}
+```
+
+```{r}
+VM_RNA <- readRDS(paste0(path, 'VM.RDS'))
+RM_RNA <- readRDS(paste0(path, 'RM_RNA.RDS'))
+RM_RNA <- RM_RNA[-which(RM_RNA$Spatial_cluster == 'L6 IT CAR3'),]
+VM_RNA_new <- mapCells(VM_RNA, RM_RNA, nr_bin=10)
+saveRDS(VM_RNA_new, file=paste0(path,'VM_RNA_ScoMAP.RDS'))
+```
+
+```{r}
+VM_ATAC <- readRDS(paste0(path,'VM.RDS'))
+RM_ATAC <- readRDS(paste0(path, 'RM_ATAC.RDS'))
+RM_ATAC[which(RM_ATAC$Spatial_cluster == 'CGE_SNCG'),'Spatial_cluster'] <- 'CGE SNCG'
+RM_ATAC <- RM_ATAC[-which(RM_ATAC$Spatial_cluster == 'L6 IT CAR3'),]
+VM_ATAC_new <- mapCells(VM_ATAC, RM_ATAC, nr_bin=10)
+saveRDS(VM_ATAC_new, file=paste0(path,'VM_ATAC_ScoMAP.RDS'))
+```
+
+# 4. Put together
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/ScoMAP/'
+VM_ATAC  <- readRDS(paste0(path,'VM_ATAC_ScoMAP.RDS'))
+VM_RNA  <- readRDS(paste0(path,'VM_RNA_ScoMAP.RDS'))
+VM_ATAC <- VM_ATAC[rownames(VM_RNA),]
+atac_names <- paste0('ATAC_', as.vector(unlist(VM_ATAC$RM_assignment)))
+```
+
+```{r}
+rna_names <- as.vector(unlist(VM_RNA$RM_assignment)) 
+rna_names  <- gsub('TEW__3cc0d9__bb22bc__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__75da5c__5b0f59__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__c14e1d__Multiome_RNA_brain_', '', rna_names )
+rna_names  <- gsub('TEW__c3f7c1__1ac906__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__d112c8__547ada__Multiome_RNA_brain_', '', rna_names )
+rna_names  <- gsub('10xcomplex_UC', '10x_complex_UC', rna_names )
+rna_names <- paste0('RNA_',sapply(strsplit(unlist(rna_names), split = "___"), "[", 1), '___', sapply(strsplit(unlist(rna_names), split = "___"), "[", 2))
+head(rna_names)
+```
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat Harmony UMAP`
+colnames(gene_umap) <- c('UMAP1', 'UMAP2')
+```
+
+```{r}
+umap_atac <- gene_umap
+rownames(umap_atac) <- paste0('ATAC_', rownames(umap_atac))
+umap_rna <- gene_umap
+rownames(umap_rna) <- paste0('RNA_', rownames(umap_rna))
+umap_coord <- as.data.frame(rbind(umap_atac, umap_rna))
+```
+
+```{r}
+library(FigR)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/plots/ScoMAP_OL.pdf')
+plotPairs(ATAC = atac_names[which(rna_names %in% rownames(umap_coord))],
+          RNA= rna_names[which(rna_names %in% rownames(umap_coord))],
+          max.show = 200,
+          umap.df = umap_coord)
+dev.off()
+```
+```{r}
+scomap_pairing <- cbind(atac_names, rna_names, paste0('Cell_', 1:length(rna_names)))
+colnames(scomap_pairing) <- c('ATAC', 'RNA', 'Name')
+write.table(scomap_pairing, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/ScoMAP_pairing.tsv', col.names=T, quote=FALSE, row.names = FALSE)
+```
+
+# 5. Same but all random
+
+```{r}
+.mapCells_int <- function(VM,
+                          RM,
+                          target_cluster,
+                          nr_bin=10,
+                          seed=123){
+  # Check
+  if(!target_cluster %in% RM$Spatial_cluster){
+    stop('The specified cluster is not defined in the real map (`RM$Spatial_cluster`).')
+  }
+  
+  if(!target_cluster %in% VM$cluster_annot){
+    print(target_cluster)
+    stop('The specified cluster is not defined in the virtual map (`VM$cluster_annot`).')
+  }
+  
+  # Set seed (random sampling)
+  set.seed(seed)
+  # Prepare data for target type
+  target_RM <- RM[which(RM$Spatial_cluster == target_cluster),]
+  target_VM <- VM[which(VM$cluster_annot==target_cluster),]
+  rownames(target_VM) <- paste0(as.vector(unlist(target_VM[,'x'])), '_', as.vector(unlist(target_VM[,'y'])))
+  # Take landmark
+  target_landmark_RM <- unique(target_RM$Landmark)
+  
+  if(target_landmark_RM == 'None'){
+    print(paste0('The target cluster ', target_cluster, ' will be ramdomly mapped.'))
+    if (nrow(target_RM) > nrow(target_VM)){
+      cell_assigment <- rownames(target_RM)[sample(nrow(target_VM))]
+    } else {
+      if (nrow(target_VM)-nrow(target_RM) > nrow(target_RM)){
+        cell_assigment <- sample(c(sample(rownames(target_RM), nrow(target_RM)), sample(rownames(target_RM), nrow(target_VM)-nrow(target_RM), replace=TRUE)))
+      } else {
+        cell_assigment <- sample(c(sample(rownames(target_RM), nrow(target_RM)), sample(rownames(target_RM), nrow(target_VM)-nrow(target_RM))))
+      }
+    }
+    names(cell_assigment) <- rownames(target_VM)
+    target_RM$PseudotimeRank <- rep('0', nrow(target_RM))
+    distance2landmark <- rep('0', nrow(target_VM))
+    names(distance2landmark) <- rownames(target_VM)
+    
+  }
+  else {
+    print(paste0('The target cluster ', target_cluster, ' will be mapped to a spatial axis.'))
+    # Check
+    if(!target_landmark_RM %in% VM$is.landmark){
+      stop('The landmark specified in the real map (`RM$Landmark`) does not exist in the virtual map (`VM$is.landmark`)')
+    }
+    # Calculate distance of virtual cell to landmark
+    landmark <- VM[which(VM$is.landmark == target_landmark_RM), c('x', 'y')]
+    if (nrow(landmark) == 1){
+      distance2landmark <- sapply(1:nrow(target_VM), function (i) sqrt(sum((target_VM[i,c('x','y')]-landmark)^2)))
+    } else if (nrow(landmark) > 1){
+      distance2landmark <- as.vector(unlist(lapply(1:nrow(target_VM), function (i) min(sqrt(rowSums((rbind(target_VM[i,c('x','y')][rep(1, nrow(landmark)), ])-landmark)^2))))))
+    }
+    names(distance2landmark) <- rownames(target_VM)
+    distance2landmark <- distance2landmark[order(distance2landmark)]
+    denom_VM <- ceiling(nrow(target_VM)/nr_bin)
+    VM_bin <- split(distance2landmark, ceiling(seq_along(distance2landmark)/denom_VM))
+    # Make bins on pseudotime
+    pseudotime_order <- as.numeric(target_RM$Pseudotime)
+    names(pseudotime_order) <- rownames(target_RM)
+    if (unique(as.vector(unlist(target_RM$PosLandmark))) == 'Before'){
+      pseudotime_order <- -pseudotime_order
+    }
+    pseudotime_order <- rank(pseudotime_order)
+    pseudotime_order <- pseudotime_order[order(pseudotime_order)]
+    target_RM[names(pseudotime_order), 'PseudotimeRank'] <- pseudotime_order
+    denom_RM <- ceiling(nrow(target_RM)/nr_bin)
+    RM_bin <- split(pseudotime_order, ceiling(seq_along(pseudotime_order)/denom_RM))
+    # Map cells
+    if (denom_VM < denom_RM){
+      if (sum(lengths(RM_bin) > denom_VM) >= nr_bin){
+        cell_assigment <- as.vector(unlist(lapply(1:length(VM_bin), function(i) sample(names(RM_bin[[i]]), length(VM_bin[[i]])))))
+      } else{
+        cell_assigment <- as.vector(unlist(lapply(1:length(VM_bin), function(i) sample(names(RM_bin[[i]]), length(VM_bin[[i]]), replace=TRUE))))
+      }
+    } else {
+      cell_assigment <- as.vector(unlist(sapply(1:length(VM_bin), function(i)  sample(c(names(RM_bin[[i]]), sample(names(RM_bin[[i]]), length(VM_bin[[i]])-length(RM_bin[[i]]), replace=TRUE))))))
+    } 
+    names(cell_assigment) <- as.vector(unlist(lapply(VM_bin, names)))
+  }
+  
+  if(!'RM_assignment' %in% colnames(VM)){
+    VM$RM_assignment <- rep(NA, nrow(VM))
+    VM$RM_cell_type <- rep(NA, nrow(VM))
+    VM$RM_landmark <- rep(NA, nrow(VM))
+    VM$RM_pseudotime <- rep(0, nrow(VM))
+    VM$RM_posLandmark <- rep(NA, nrow(VM))
+    VM$RM_spatial_cluster <- rep(NA, nrow(VM))
+    VM$DistanceFromLandmark- rep(0, nrow(VM))
+    VM$PseudotimeRank- rep(0, nrow(VM))
+  }
+  VM[names(cell_assigment), 'RM_assignment'] <- cell_assigment
+    VM[names(cell_assigment), 'RM_cell_type'] <- as.vector(unlist(target_RM[cell_assigment,'Cell_type']))
+    VM[names(cell_assigment), 'RM_landmark'] <- as.vector(unlist(target_RM[cell_assigment,'Landmark']))
+    VM[names(cell_assigment), 'RM_pseudotime'] <- as.vector(unlist(target_RM[cell_assigment,'Pseudotime']))
+    VM[names(cell_assigment), 'RM_posLandmark'] <- as.vector(unlist(target_RM[cell_assigment,'PosLandmark']))
+    VM[names(cell_assigment), 'RM_spatial_cluster'] <- as.vector(unlist(target_RM[cell_assigment,'Spatial_cluster']))
+    VM[names(distance2landmark), 'DistanceFromLandmark'] <- distance2landmark
+    VM[names(cell_assigment), 'PseudotimeRank'] <- as.vector(unlist(target_RM[cell_assigment,'PseudotimeRank']))
+    
+    return(as.data.frame(VM))
+}
+
+mapCells <- function(VM,
+                     RM,
+                     target_clusters=NULL,
+                     nr_bin=10,
+                     seed=123){
+  if(is.null(target_clusters)){
+    target_clusters <- unique(RM$Spatial_cluster)[!is.na(unique(RM$Spatial_cluster))]
+  }
+  for (target_cluster in target_clusters){
+    VM <- .mapCells_int(VM, RM, target_cluster, nr_bin, seed)
+  }
+  return(VM)
+}
+```
+
+```{r}
+VM_RNA <- readRDS(paste0(path, 'VM.RDS'))
+RM_RNA <- readRDS(paste0(path, 'RM_RNA.RDS'))
+RM_RNA$Landmark <- rep('None', nrow(RM_RNA))
+RM_RNA <- RM_RNA[-which(RM_RNA$Spatial_cluster == 'L6 IT CAR3'),]
+VM_RNA_new <- mapCells(VM_RNA, RM_RNA, nr_bin=10)
+saveRDS(VM_RNA_new, file=paste0(path,'VM_RNA.RDS'))
+```
+
+```{r}
+VM_ATAC <- readRDS(paste0(path,'VM.RDS'))
+RM_ATAC <- readRDS(paste0(path, 'RM_ATAC.RDS'))
+RM_ATAC[which(RM_ATAC$Spatial_cluster == 'CGE_SNCG'),'Spatial_cluster'] <- 'CGE SNCG'
+RM_ATAC <- RM_ATAC[-which(RM_ATAC$Spatial_cluster == 'L6 IT CAR3'),]
+RM_ATAC$Landmark <- rep('None', nrow(RM_ATAC))
+VM_ATAC_new <- mapCells(VM_ATAC, RM_ATAC, nr_bin=10)
+saveRDS(VM_ATAC_new, file=paste0(path,'VM_ATAC.RDS'))
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/ScoMAP/'
+VM_ATAC  <- readRDS(paste0(path,'VM_ATAC.RDS'))
+VM_RNA  <- readRDS(paste0(path,'VM_RNA.RDS'))
+VM_ATAC <- VM_ATAC[rownames(VM_RNA),]
+atac_names <- paste0('ATAC_', as.vector(unlist(VM_ATAC$RM_assignment)))
+```
+
+```{r}
+rna_names <- as.vector(unlist(VM_RNA$RM_assignment)) 
+rna_names  <- gsub('TEW__3cc0d9__bb22bc__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__75da5c__5b0f59__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__c14e1d__Multiome_RNA_brain_', '', rna_names )
+rna_names  <- gsub('TEW__c3f7c1__1ac906__Multiome_brain_', '', rna_names )
+rna_names  <- gsub('TEW__d112c8__547ada__Multiome_RNA_brain_', '', rna_names )
+rna_names  <- gsub('10xcomplex_UC', '10x_complex_UC', rna_names )
+rna_names <- paste0('RNA_',sapply(strsplit(unlist(rna_names), split = "___"), "[", 1), '___', sapply(strsplit(unlist(rna_names), split = "___"), "[", 2))
+head(rna_names)
+```
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat Harmony UMAP`
+colnames(gene_umap) <- c('UMAP1', 'UMAP2')
+```
+
+```{r}
+umap_atac <- gene_umap
+rownames(umap_atac) <- paste0('ATAC_', rownames(umap_atac))
+umap_rna <- gene_umap
+rownames(umap_rna) <- paste0('RNA_', rownames(umap_rna))
+umap_coord <- as.data.frame(rbind(umap_atac, umap_rna))
+```
+
+```{r}
+library(FigR)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/plots/SCENIC+.pdf')
+plotPairs(ATAC = atac_names[which(rna_names %in% rownames(umap_coord))],
+          RNA= rna_names[which(rna_names %in% rownames(umap_coord))],
+          max.show = 500,
+          umap.df = umap_coord)
+dev.off()
+```
+
+```{r}
+scomap_pairing <- cbind(atac_names, rna_names, paste0('Cell_', 1:length(rna_names)))
+colnames(scomap_pairing) <- c('ATAC', 'RNA', 'Name')
+write.table(scomap_pairing, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/SCENIC+_pairing.tsv', col.names=T, quote=FALSE, row.names = FALSE)
+```
+
+# 6. Calculate distance across methods
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/TEW_cortex/scenicplus_v10_v2/grnboost_autoreg/SCENIC+_mouse_cortex_gene_based_AE.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$`Seurat Harmony UMAP`
+colnames(gene_umap) <- c('UMAP1', 'UMAP2')
+```
+
+```{r}
+umap_atac <- gene_umap
+rownames(umap_atac) <- paste0('ATAC_', rownames(umap_atac))
+umap_rna <- gene_umap
+rownames(umap_rna) <- paste0('RNA_', rownames(umap_rna))
+umap_coord <- as.data.frame(rbind(umap_atac, umap_rna))
+```
+
+```{r}
+f <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/random_pairing.tsv')
+rna_names <- f[,2]
+atac_names <- f[,1]
+library("proxy")
+x <- list()
+x[['Random']] <- diag(dist(umap_coord[atac_names[which(rna_names %in% rownames(umap_coord))],], umap_coord[rna_names[which(rna_names %in% rownames(umap_coord))],]))
+
+f <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/figr_pairing.tsv')
+rna_names <- f[,2]
+atac_names <- f[,1]
+library("proxy")
+x[['FigR']] <- diag(dist(umap_coord[atac_names[which(rna_names %in% rownames(umap_coord))],], umap_coord[rna_names[which(rna_names %in% rownames(umap_coord))],]))
+
+f <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/SCENIC+_pairing.tsv')
+rna_names <- f[,2]
+atac_names <- f[,1]
+library("proxy")
+x[['SCENIC+']] <- diag(dist(umap_coord[atac_names[which(rna_names %in% rownames(umap_coord))],], umap_coord[rna_names[which(rna_names %in% rownames(umap_coord))],]))
+
+f <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/ScoMAP_pairing.tsv')
+rna_names <- f[,2]
+atac_names <- f[,1]
+library("proxy")
+x[['ScoMAP']] <- diag(dist(umap_coord[atac_names[which(rna_names %in% rownames(umap_coord))],], umap_coord[rna_names[which(rna_names %in% rownames(umap_coord))],]))
+```
+
+```{r}
+dt <- data.frame()
+for (name in names(x)){
+  print(name)
+  print(median(x[[name]]))
+  print(mean((x[[name]])))
+  z <- as.data.frame(cbind(x[[name]], rep(name, length(x[[name]]))))
+  colnames(z) <-  c('Value', 'Method')
+  dt <- rbind(dt, z)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("Random"= 'grey', "SCENIC+"= 'red',"FigR"= 'purple', "ScoMAP"= 'dodgerblue')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels = c('Random', 'SCENIC+', 'FigR', 'ScoMAP'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/10x_multiome_mouse_cortex/pair_benchmark/distance_plot.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Method") + ylab('Distance') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+```
+

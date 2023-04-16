@@ -1,0 +1,799 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# 1. pycisTopic
+
+
+## A. Overall running time
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset')
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c(c1[3], c1[2], c1[4], c1[1],c3[3], c3[2], c3[4], c3[1],  c2[3], c2[2], c2[4], c2[1])
+names(colors) <- names
+colScale <- scale_color_manual(name = "Dataset",values = colors) 
+```
+
+```{r}
+pdf(paste0(path,'pycisTopic_time_per_step.pdf'))
+dt$Time <- as.numeric(dt$Time)
+dt[,1] <- factor(dt[,1], levels =  c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs'))
+ggplot(data=dt, aes(x=Step, y=Time, group=Dataset)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset))+colScale+theme_bw() 
+dev.off()
+```
+
+## B. Time per models
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times_per_topic_model.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset')
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c(c1[3], c1[2], c1[4], c1[1],c3[3], c3[2], c3[4], c3[1],  c2[3], c2[2], c2[4], c2[1])
+names(colors) <- names
+colScale <- scale_color_manual(name = "Dataset",values = colors) 
+```
+
+```{r}
+pdf(paste0(path,'pycisTopic_time_per_model.pdf'))
+dt$Time <- as.numeric(dt$Time)
+dt[,1] <- factor(dt[,1], levels =  c('Topic_2', 'Topic_10', 'Topic_20', 'Topic_30', 'Topic_40', 'Topic_50'))
+ggplot(data=dt, aes(x=Step, y=Time, group=Dataset)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset))+colScale+theme_bw() 
+dev.off()
+```
+
+## C. Time with average time per model
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times_per_topic_model.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  df <- cbind('Models', mean(f[,1]), name)
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset')
+dt1 <- dt
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset')
+dt <- dt[-which(dt$Step == 'Models'),]
+dt <- rbind(dt, dt1)
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c(c1[3], c1[2], c1[4], c1[1],c3[3], c3[2], c3[4], c3[1],  c2[3], c2[2], c2[4], c2[1])
+names(colors) <- names
+colScale <- scale_color_manual(name = "Dataset",values = colors) 
+```
+
+```{r}
+pdf(paste0(path,'pycisTopic_time_per_step_average.pdf'))
+dt$Time <- as.numeric(dt$Time)
+dt[,1] <- factor(dt[,1], levels =  c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs'))
+ggplot(data=dt, aes(x=Step, y=Time, group=Dataset)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset))+colScale+theme_bw() 
+dev.off()
+```
+
+## D. Time versus cells and coverage per step
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times_per_topic_model.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind('Models', mean(f[,1]), name, coverage, cells)
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells')
+dt1 <- dt
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)), coverage, cells)
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells')
+dt <- dt[-which(dt$Step == 'Models'),]
+dt <- rbind(dt, dt1)
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c('brown1', 'purple', 'dodgerblue')
+names(colors) <- c('20000', '10000', '3000')
+colScale <- scale_color_manual(name = "Coverage",values = colors) 
+```
+
+```{r}
+plist <- list()
+for (step in c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs')){
+  d <- dt[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)
+  d$Cells <- as.numeric(d$Cells)
+  d[,1] <- factor(d[,1], levels =  c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs'))
+  print(ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Coverage))+
+  geom_point(aes(color=Coverage))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Coverage))+
+  geom_point(aes(color=Coverage))+colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+library(ggpubr)
+library(grid)
+pdf(paste0(path,'pycisTopic_time_per_step_average_separated.pdf'))
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], plist[[5]], common.legend = TRUE, nrow=2, ncol=3)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Number of cells", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+## E. Plot number of topics
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/pycistarget/CTX_Topics_All/',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/pycistarget/CTX_Topics_All/',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/pycistarget/CTX_Topics_All/',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/pycistarget/CTX_Topics_All/')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+ct <- vector()
+for (file in files){
+  ct <- c(ct, length(list.files(file)))
+}
+names(ct) <- names
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times_per_topic_model.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times_per_topic_model.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind('Models', mean(f[,1]), name, coverage, cells, ct[name])
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells', 'Topics')
+dt1 <- dt
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/running_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)), coverage, cells, rep(ct[name], nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells', 'Topics')
+dt <- dt[-which(dt$Step == 'Models'),]
+dt <- rbind(dt, dt1)
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c('brown1', 'purple', 'dodgerblue')
+names(colors) <- c('20000', '10000', '3000')
+colScale <- scale_color_manual(name = "Coverage",values = colors) 
+```
+
+```{r}
+plist <- list()
+for (step in c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs')){
+  d <- dt[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)
+  d$Topics <- as.numeric(d$Topics)
+  d[,1] <- factor(d[,1], levels =  c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs'))
+  print(ggplot(data=d, aes(x=Topics, y=Time, group=Coverage)) +
+  geom_line(aes(color=Coverage))+
+  geom_point(aes(color=Coverage))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Topics, y=Time, group=Coverage)) +
+  geom_line(aes(color=Coverage))+
+  geom_point(aes(color=Coverage))+colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+pdf(paste0(path,'pycisTopic_time_per_step_average_separated_by_topics.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], plist[[5]], common.legend = TRUE, nrow=2, ncol=3)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Topics", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c('brown1', 'purple', 'dodgerblue', 'grey')
+names(colors) <- c('25000', '10000', '1000', '80')
+colScale <- scale_color_manual(name = "Cells",values = colors) 
+```
+
+
+```{r}
+plist <- list()
+for (step in c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs')){
+  d <- dt[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)
+  d$Topics <- as.numeric(d$Topics)
+  d[,1] <- factor(d[,1], levels =  c('Models', 'Dimensionality_reduction', 'Topic_binarization', 'Imputation', 'DARs'))
+  print(ggplot(data=d, aes(x=Topics, y=Time, group=Cells)) +
+  geom_line(aes(color=Cells))+
+  geom_point(aes(color=Cells))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Topics, y=Time, group=Cells)) +
+  geom_line(aes(color=Cells))+
+  geom_point(aes(color=Cells))+colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+pdf(paste0(path,'pycisTopic_time_per_step_average_separated_by_cells.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], plist[[5]], common.legend = TRUE, nrow=2, ncol=3)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Topics", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+# 2. pycisTarget
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/pycistarget/CTX_Topics_All/',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/pycistarget/CTX_Topics_All/',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/pycistarget/CTX_Topics_All/',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/pycistarget/CTX_Topics_All/',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/pycistarget/CTX_Topics_All/',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/pycistarget/CTX_Topics_All/')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+ct <- vector()
+for (file in files){
+  ct <- c(ct, length(list.files(file)))
+}
+names(ct) <- names
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/pycistarget/Topicsrunning_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/pycistarget/Topicsrunning_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/pycistarget/Topicsrunning_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/pycistarget/Topicsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/pycistarget/Topicsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/pycistarget/Topicsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/pycistarget/Topicsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/pycistarget/Topicsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/pycistarget/Topicsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/pycistarget/Topicsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/pycistarget/Topicsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/pycistarget/Topicsrunning_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)), coverage, cells, rep(ct[name], nrow(f)), rep('Topics', nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells', 'Topics', 'Type')
+dt1 <- dt
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/pycistarget/DARsrunning_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/pycistarget/DARsrunning_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/pycistarget/DARsrunning_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/pycistarget/DARsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/pycistarget/DARsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/pycistarget/DARsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/pycistarget/DARsrunning_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/pycistarget/DARsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/pycistarget/DARsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/pycistarget/DARsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/pycistarget/DARsrunning_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/pycistarget/DARsrunning_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)), coverage, cells, rep(ct[name], nrow(f)), rep('DARs', nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells', 'Topics', 'Type')
+dt <- rbind(dt, dt1)
+dt$Time <- as.numeric(dt$Time)
+dt$Topics <- as.numeric(dt$Topics)
+dt$Ntime <- dt$Time/dt$Topics
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c(c1[3], c1[2], c1[4], c1[1],c3[3], c3[2], c3[4], c3[1],  c2[3], c2[2], c2[4], c2[1])
+names(colors) <- names
+colScale <- scale_color_manual(name = "Dataset",values = colors) 
+```
+
+```{r}
+plist <- list()
+x <- dt[which(dt$Type == 'Topics'),]
+for (step in c('CTX_all', 'CTX_np', 'DEM_all', 'DEM_np')){
+  d <- x[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)
+  d$Topics <- as.numeric(d$Topics)
+  d[,1] <- factor(d[,1], levels =  c('CTX_all', 'CTX_np', 'DEM_all', 'DEM_np'))
+  print(ggplot(data=d, aes(x=Topics, y=Time, group=Coverage)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Topics, y=Time, group=Coverage)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset)) +colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+pdf(paste0(path,'pycistarget_time_per_step_topics_full_time.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], common.legend = TRUE, nrow=2, ncol=2)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Topics", gp = gpar(cex = 1.3)))
+dev.off()
+```
+```{r}
+plist <- list()
+x <- dt[which(dt$Type == 'Topics'),]
+for (step in c('CTX_all', 'CTX_np', 'DEM_all', 'DEM_np')){
+  d <- x[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)/as.numeric(d$Topics)
+  d$Cells <- as.numeric(d$Cells)
+  d[,1] <- factor(d[,1], levels =  c('CTX_all', 'CTX_np', 'DEM_all', 'DEM_np'))
+  print(ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset)) +colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+pdf(paste0(path,'pycistarget_time_per_step_topics_per_region_set_time_cells.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], common.legend = TRUE, nrow=2, ncol=2)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Cells", gp = gpar(cex = 1.3)))
+dev.off()
+pdf(paste0(path,'pycistarget_time_per_step_topics_full_time_cells_only_wpromoters.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[3]], common.legend = TRUE, nrow=2, ncol=2)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Cells", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+```{r}
+plist <- list()
+x <- dt[which(dt$Type == 'DARs'),]
+for (step in c('CTX_all', 'CTX_np', 'DEM_all', 'DEM_np')){
+  d <- x[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)/8
+  d$Cells <- as.numeric(d$Cells)
+  d[,1] <- factor(d[,1], levels =  c('CTX_all', 'CTX_np', 'DEM_all', 'DEM_np'))
+  print(ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Dataset))+
+  geom_point(aes(color=Dataset)) +colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+pdf(paste0(path,'pycistarget_time_per_step_DARs_full_time_cells.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], common.legend = TRUE, nrow=2, ncol=2)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Cells", gp = gpar(cex = 1.3)))
+dev.off()
+
+pdf(paste0(path,'pycistarget_time_per_step_DARs_full_time_cells_only_wpromoters.pdf'))
+library(ggpubr)
+library(grid)
+figure <- ggarrange(plist[[1]], plist[[3]], common.legend = TRUE, nrow=2, ncol=2)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Cells", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+# Boxplot number DARs/topics
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/DARs.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/DARs.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/DARs.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/DARs.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/DARs.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/DARs.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/DARs.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/DARs.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/DARs.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/DARs.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/DARs.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/DARs.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Cell_line', 'NrRegions', 'Dataset')
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c(c1[3], c1[2], c1[4], c1[1],c3[3], c3[2], c3[4], c3[1],  c2[3], c2[2], c2[4], c2[1])
+names(colors) <- names
+colScale <- scale_fill_manual(name = "Dataset",values = colors) 
+dt <- as.data.frame(dt)
+dt[,2] <- as.numeric(dt[,2])
+dt[,3] <- factor(dt[,3], levels = c('3K_fragments_80_cells', '3K_fragments_1K_cells', '3K_fragments_10K_cells', '3K_fragments_25K_cells', '10K_fragments_80_cells', '10K_fragments_1K_cells', '10K_fragments_10K_cells', '10K_fragments_25K_cells', '20K_fragments_80_cells', '20K_fragments_1K_cells', '20K_fragments_10K_cells', '20K_fragments_25K_cells'))
+pdf(paste0(path,'nr_regions_per_DARs.pdf'))
+ggplot(dt,aes(x = Dataset, y = NrRegions, fill= Dataset)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Dataset, y = NrRegions, fill= Dataset)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+```
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/topics.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/topics.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/topics.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/topics.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/topics.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/topics.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/topics.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/topics.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/topics.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/topics.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/topics.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/topics.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)))
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Cell_line', 'NrRegions', 'Dataset')
+```
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c(c1[3], c1[2], c1[4], c1[1],c3[3], c3[2], c3[4], c3[1],  c2[3], c2[2], c2[4], c2[1])
+names(colors) <- names
+colScale <- scale__manual(name = "Dataset",values = colors) 
+dt <- as.data.frame(dt)
+dt[,2] <- as.numeric(dt[,2])
+dt[,3] <- factor(dt[,3], levels = c('3K_fragments_80_cells', '3K_fragments_1K_cells', '3K_fragments_10K_cells', '3K_fragments_25K_cells', '10K_fragments_80_cells', '10K_fragments_1K_cells', '10K_fragments_10K_cells', '10K_fragments_25K_cells', '20K_fragments_80_cells', '20K_fragments_1K_cells', '20K_fragments_10K_cells', '20K_fragments_25K_cells'))
+pdf(paste0(path,'nr_regions_per_topic.pdf'))
+ggplot(dt,aes(x = Dataset, y = NrRegions, fill= Dataset)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Dataset, y = NrRegions, fill= Dataset)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+```
+
+## D. SCENIC+
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/speed_benchmark/'
+files <- c('high_simulation/DPCL_cisTopicObject_20K_fragments_10K_cells/scenicplus/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_1K_cells/scenicplus/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_25K_cells/scenicplus/running_times.tsv',
+'high_simulation/DPCL_cisTopicObject_20K_fragments_80_cells/scenicplus/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_10K_cells/scenicplus/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_1K_cells/scenicplus/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_25K_cells/scenicplus/running_times.tsv',
+'low_simulation/DPCL_cisTopicObject_3K_fragments_80_cells/scenicplus/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_10K_cells/scenicplus/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_1K_cells/scenicplus/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_25K_cells/scenicplus/running_times.tsv',
+'medium_simulation/DPCL_cisTopicObject_10K_fragments_80_cells/scenicplus/running_times.tsv')
+names <-  sapply(strsplit(files, split = "cisTopicObject_"), "[", 2)
+names <-  sapply(strsplit(names, split = "/"), "[", 1)
+dt <- data.frame()
+for (file in files){
+  f <- read.table(paste0(path, file))
+  name <-  sapply(strsplit(file, split = "cisTopicObject_"), "[", 2)
+  name <-  sapply(strsplit(name, split = "/"), "[", 1)
+  coverage <- sapply(strsplit(name, split = "_"), "[", 1)
+  cells <- sapply(strsplit(name, split = "_"), "[", 3)
+  coverage <- gsub('K', '000', coverage)
+  cells <- gsub('K', '000', cells)
+  df <- cbind(rownames(f), f[,1], rep(name, nrow(f)), coverage, cells)
+  dt <- rbind(dt, df)
+}
+colnames(dt) <- c('Step', 'Time', 'Dataset', 'Coverage', 'Cells')
+
+```
+
+
+```{r}
+library(gplots)
+library(RColorBrewer)
+c1 <- brewer.pal(8, 'Reds')[3:6]
+c3 <- brewer.pal(9, 'Blues')[3:6]
+c2 <- brewer.pal(8, 'Purples')[3:6]
+colors <- c('brown1', 'purple', 'dodgerblue')
+names(colors) <- c('20000', '10000', '3000')
+colScale <- scale_color_manual(name = "Coverage",values = colors) 
+```
+
+```{r}
+plist <- list()
+for (step in unique(unlist(as.vector(dt$Step)))){
+  d <- dt[which(dt$Step == step),]
+  d$Time <- as.numeric(d$Time)
+  d$Cells <- as.numeric(d$Cells)
+  d[,2] <- as.numeric(d[,2])
+  d[,1] <- factor(d[,1], levels =  unique(unlist(as.vector(dt$Step))))
+  print(ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Coverage))+
+  geom_point(aes(color=Coverage))+colScale+theme_bw() + ggtitle(step))
+  plist[[step]] <- ggplot(data=d, aes(x=Cells, y=Time, group=Coverage)) +
+  geom_line(aes(color=Coverage))+
+  geom_point(aes(color=Coverage))+colScale+theme_bw() + ggtitle(step) + rremove("ylab")+ rremove("xlab") + theme(legend.position="none")
+}
+library(ggpubr)
+library(grid)
+pdf(paste0(path,'scenicplus_time_per_step_average_separated.pdf'))
+figure <- ggarrange(plist[[1]], plist[[2]], plist[[3]], plist[[4]], plist[[5]],plist[[6]], plist[[7]], plist[[8]], plist[[9]], plist[[10]], plist[[11]], plist[[12]], plist[[13]],plist[[14]], plist[[15]], plist[[16]], common.legend = TRUE, nrow=4, ncol=4)
+annotate_figure(figure, left = textGrob("Time (s)", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Number of cells", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
