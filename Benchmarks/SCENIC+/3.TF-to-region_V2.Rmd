@@ -1,0 +1,578 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Precision-recall comparison with Unibind
+
+```{r}
+metadata <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/metadata.tsv', sep='\t')
+metadata <- metadata[which(metadata[,'Output.type'] == 'IDR ranked peaks'),]
+metadata <- metadata[which(metadata[,'File.assembly'] == 'GRCh38'),]
+metadata <- metadata[,c('File.accession', 'Assay', 'Biosample.term.name', 'Experiment.accession', 'Experiment.target', 'Biosample.genetic.modifications.categories', 'Technical.replicate.s.')]
+metadata$len_rep <- sapply(metadata$Technical.replicate.s., nchar)
+metadata <- as.data.frame(metadata)
+metadata <- metadata %>% group_by(Experiment.accession) %>% top_n(1, len_rep)
+metadata <- metadata[!duplicated(metadata$Experiment.accession),]
+metadata <- metadata[,c('File.accession', 'Assay', 'Biosample.term.name', 'Experiment.accession', 'Experiment.target')]
+metadata$Experiment.target <-sapply(strsplit(unlist(metadata$Experiment.target), split = "-"), "[", 1)
+metadata$sample_name <- gsub(' ', '-', paste0(metadata$Biosample.term.name, '_', metadata$Experiment.target))
+write.table(metadata, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/filtered_metadata.tsv', sep='\t')
+```
+
+```{r}
+sel_rel <- c('NFKB2', 'NFKB1', 'REL', 'HNF1A', 'NFE2', 'TAL1', 'GATA1', 'FOSL1', 'EGR1', 'HNF4A', 'FOXA1', 'GATA2', 'ETS1', 'FOSL2', 'PAX5', 'IRF4', 'EBF1')
+for (rel in sel_rel){
+  print(rel)
+  print(metadata$sample_name[grep(rel, metadata$sample_name)])
+}
+```
+
+# For unibind, load region_eregulons
+
+```{r}
+consensus_peaks <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/MACS_ATAC/iterative/peak_filtering_norm/combined_summits_final.bed')
+consensus_peaks <- paste0(consensus_peaks[,1], ':', consensus_peaks[,2], '-', consensus_peaks[,3])
+```
+
+```{r}
+#eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/SCENIC+_simplified_eRegulons_autoreg.bed', header=FALSE)
+#eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/SCENIC+_simplified_eRegulons.bed', header=FALSE)
+#eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/GRaNIE_eRegulons.bed', header=FALSE)
+eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/Pando_eRegulons_consensus.bed', header=FALSE)
+#eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/celloracle_eRegulons.bed', header=FALSE)
+colnames(eregulons_df) <- c('Chromosome', 'Start', 'End', 'Regulon')
+eregulons_df$Name <- paste0(eregulons_df$Chromosome, ':', eregulons_df$Start, '-', eregulons_df$End)
+eregulons_df$TF <- sapply(strsplit(unlist(eregulons_df$Regulon), split = "_"), "[", 1)
+dim(eregulons_df)
+eregulons_df <- eregulons_df[which(eregulons_df$Name %in% consensus_peaks),]
+dim(eregulons_df)
+eregulons_list <- list()
+for (TF in unique(eregulons_df$TF)){
+  eregulons_list[[TF]] <- unique(as.vector(unlist(eregulons_df[which(eregulons_df$TF == TF), 'Name'])))
+}
+eregulons_list <- eregulons_list[which(lengths(eregulons_list) > 20)]
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/'
+files <- list.files(path)
+unibind_list <- list()
+for (file in files){
+  df <- read.delim(paste0(path, file), header=FALSE)
+  TF <- strsplit(file, split = "\\.")[[1]][3]
+  regions <- paste0(df[,1], ':', df[,2], '-', df[,3])
+  if (TF %in% names(unibind_list)){
+    unibind_list[[TF]] <- unique(c(unibind_list[[TF]], regions))
+  } else {
+    unibind_list[[TF]]  <- unique(regions)
+  }
+}
+```
+
+```{r}
+# 84 versus 157
+unibind_list <- unibind_list[which(names(unibind_list) %in% names(eregulons_list))]
+eregulons_list <- eregulons_list[which(names(eregulons_list) %in% names(unibind_list))]
+eregulons_list <- eregulons_list[names(unibind_list)]
+length(eregulons_list)
+library(caret)
+# scenic+_autoreg (>20): 70
+# scenic+ (>20): 66
+# granie (>20): 17
+# pando (>20): 126
+# celloracle (>20): 67
+prec_list <- list()
+recall_list <- list()
+F1_list <- list()
+for (TF in names(unibind_list)){
+  print(TF)
+  true_pos <- rep(0, length(consensus_peaks))
+  true_pos[which(consensus_peaks %in% unibind_list[[TF]])] <- 1
+  true_pos <- as.factor(true_pos)
+  prec_vector <- vector()
+  recall_vector <- vector()
+  F1_vector <- vector()
+  for (TF_2 in names(eregulons_list)){
+    pred_pos <- rep(0, length(consensus_peaks))
+    pred_pos[which(consensus_peaks %in% eregulons_list[[TF_2]])] <- 1
+    #print(pred_pos)
+    pred_pos <- as.factor(pred_pos)
+    precision <- posPredValue(pred_pos, true_pos, positive="1")
+    recall <- sensitivity(pred_pos, true_pos, positive="1")
+    F1 <- (2 * precision * recall) / (precision + recall)
+    prec_vector <- c(prec_vector, precision)
+    recall_vector <- c(recall_vector, recall)
+    F1_vector <- c(F1_vector, F1)
+  }
+  prec_list[[TF]] <-prec_vector
+  recall_list[[TF]] <- recall_vector
+  F1_list[[TF]] <- F1_vector
+}
+
+#saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus_autoreg/unibind_list_gbm.RDS')
+#saveRDS(eregulons_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus_autoreg/eregulon_list_gbm.RDS')
+#saveRDS(prec_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus_autoreg/prec_list_gbm.RDS')
+#saveRDS(recall_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus_autoreg/recall_list_gbm.RDS')
+#saveRDS(F1_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus_autoreg/F1_list_gbm.RDS')
+
+#saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/unibind_list_gbm.RDS')
+#saveRDS(eregulons_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/eregulon_list_gbm.RDS')
+#saveRDS(prec_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/prec_list_gbm.RDS')
+#saveRDS(recall_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/recall_list_gbm.RDS')
+#saveRDS(F1_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/F1_list_gbm.RDS')
+
+
+#saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/unibind_list_gbm.RDS')
+#saveRDS(eregulons_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/eregulon_list_gbm.RDS')
+#saveRDS(prec_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/prec_list_gbm.RDS')
+#saveRDS(recall_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/recall_list_gbm.RDS')
+#saveRDS(F1_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/F1_list_gbm.RDS')
+
+saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/unibind_list_gbm.RDS')
+saveRDS(eregulons_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/eregulon_list_gbm.RDS')
+saveRDS(prec_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/prec_list_gbm.RDS')
+saveRDS(recall_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/recall_list_gbm.RDS')
+saveRDS(F1_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/F1_list_gbm.RDS')
+
+
+#saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/unibind_list_gbm.RDS')
+#saveRDS(eregulons_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/eregulon_list_gbm.RDS')
+#saveRDS(prec_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/prec_list_gbm.RDS')
+#saveRDS(recall_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/recall_list_gbm.RDS')
+#saveRDS(F1_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/F1_list_gbm.RDS')
+```
+
+```{r}
+eregulons_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/eregulon_list_gbm.RDS')
+unibind_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/unibind_list_gbm.RDS')
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/F1_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+colnames(cormat_combined) <- names(eregulons_list)
+rownames(cormat_combined) <- names(unibind_list)
+cormat_combined[is.na(cormat_combined)] <- 0 
+library(MatrixGenerics)
+cormat_combined <- cormat_combined[which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.05),which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.05)]
+mean(diag(as.matrix(cormat_combined)), na.rm=T)
+cormat_combined <- t(scale(cormat_combined))
+cormat_combined <- as.data.frame(cormat_combined)
+dim(cormat_combined)
+rownames(cormat_combined) == colnames(cormat_combined)
+out <- c('MEF2C', 'IRF1', 'NR3C1', 'SREBF1', 'JUN', 'MYC', 'GATA3', 'MEF2C', 'STAT1')
+cormat_combined <- cormat_combined[-which(rownames(cormat_combined) %in% out), -which(colnames(cormat_combined) %in% out)]
+```
+```{r}
+F1_rec <- list()
+F1_rec_scale <- list()
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/F1_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+F1_rec[['SCENIC+']] <- diag(as.matrix(cormat_combined))
+names(F1_rec[['SCENIC+']]) <- rownames(cormat_combined)
+F1_rec_scale[['SCENIC+']] <- diag(scale(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/F1_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+F1_rec[['CellOracle']] <- diag(as.matrix(cormat_combined))
+names(F1_rec[['CellOracle']]) <- rownames(cormat_combined)
+F1_rec_scale[['CellOracle']] <- diag(scale(cormat_combined))
+median(diag(as.matrix(cormat_combined)), na.rm=T)
+#
+
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/F1_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+F1_rec[['GRaNIE']] <- diag(as.matrix(cormat_combined))
+names(F1_rec[['GRaNIE']]) <- rownames(cormat_combined)
+F1_rec_scale[['GRaNIE']] <- diag(scale(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+# 0.0008717502
+
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/F1_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+F1_rec[['Pando']] <- diag(as.matrix(cormat_combined))
+names(F1_rec[['Pando']]) <- rownames(cormat_combined)
+F1_rec_scale[['Pando']] <- diag(scale(cormat_combined))
+median(diag(as.matrix(cormat_combined)), na.rm=T)
+# 0.00147167
+```
+
+- Number of eRegulons with F1 score > 0.05
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+thr <- 0.03
+myColors <- c(brewer.pal(7,"Set1"))
+names(myColors) <- c('SCENIC+', 'Pando', 'CellOracle', 'y', 'GRaNIE', 'x')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- cbind(c(sum(F1_rec[['SCENIC+']] > thr), sum(F1_rec[['Pando']] > thr), sum(F1_rec[['GRaNIE']] > thr), sum(F1_rec[['CellOracle']] > thr)), c('SCENIC+', 'Pando', 'GRaNIE', 'CellOracle'))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/number-of-unibindin-above01.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('eRegulons with F1 > 0.03') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+dev.off()
+```
+
+- Boxplot
+
+```{r}
+d <- data.frame(x = unlist(F1_rec), 
+                  grp = rep(names(F1_rec)[1:length(F1_rec)],times = sapply(F1_rec,length)))
+d <- d[complete.cases(d),]
+```
+
+```{r}
+d <- data.frame(x = unlist(F1_rec_scale), 
+                  grp = rep(names(F1_rec_scale)[1:length(F1_rec_scale)],times = sapply(F1_rec_scale,length)))
+d <- d[complete.cases(d),]
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(7,"Set1"))
+names(myColors) <- c('SCENIC+', 'Pando', 'CellOracle', 'y', 'GRaNIE', 'x')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+  
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/tf_to_region_f1score_boxplot_figure_no_random_reverse.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+```
+
+
+```{r}
+prec_list <- list()
+prec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/prec_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, prec_list_x))
+prec_list[['SCENIC+']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+prec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/prec_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, prec_list_x))
+prec_list[['GRaNIE']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+prec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/prec_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, prec_list_x))
+prec_list[['CellOracle']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+prec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/prec_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, prec_list_x))
+prec_list[['Pando']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+rec_list <- list()
+rec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/scenicplus/recall_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, rec_list_x))
+rec_list[['SCENIC+']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+rec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/granie/recall_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, rec_list_x))
+rec_list[['GRaNIE']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+rec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/celloracle/recall_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, rec_list_x))
+rec_list[['CellOracle']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+
+rec_list_x <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_pr/pando/recall_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, rec_list_x))
+rec_list[['Pando']] <- diag(as.matrix(cormat_combined))
+median(diag(as.matrix(cormat_combined)))
+```
+```{r}
+d <- data.frame(x = unlist(rec_list), 
+                  grp = rep(names(rec_list)[1:length(rec_list)],times = sapply(rec_list,length)))
+d <- d[complete.cases(d),]
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(7,"Set1"))
+names(myColors) <- c('SCENIC+', 'Pando', 'CellOracle', 'y', 'GRaNIE', 'x')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+  
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/tf_to_region_recall_boxplot_figure_no_random_reverse.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+```
+
+```{r}
+d <- data.frame(x = unlist(prec_list), 
+                  grp = rep(names(prec_list)[1:length(prec_list)],times = sapply(prec_list,length)))
+d <- d[complete.cases(d),]
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(7,"Set1"))
+names(myColors) <- c('SCENIC+', 'Pando', 'CellOracle', 'y', 'GRaNIE', 'x')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+  
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/tf_to_region_precision_boxplot_figure_no_random_reverse.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+```
+
+Get correlation between samples and cluster.
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+colnames(cormat) <- rownames(cormat)
+cormat <- cormat[colnames(cormat),rev(colnames(cormat))]
+```
+
+Make correlation heatmap.
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+melted_cormat$variable <- factor(melted_cormat$variable, levels=unique(melted_cormat$variable))
+melted_cormat$Var1 <- factor(melted_cormat$Var1, levels=unique(melted_cormat$Var1))
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-4.15,5.06), space = "Lab", 
+    name="Normalized\nF1") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+
+# Add correlation values
+#pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/DARs_correlation.pdf')
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+#dev.off()
+#saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_pc.RDS')
+```
+```{r}
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_stats/F1_list_gbm.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+colnames(cormat_combined) <- names(eregulons_list)
+rownames(cormat_combined) <- names(unibind_list)
+cormat_combined[is.na(cormat_combined)] <- 0 
+library(MatrixGenerics)
+cormat_combined <- cormat_combined[which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.1),which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.1)]
+mean(diag(as.matrix(cormat_combined)), na.rm=T)
+cormat_combined <- t(scale(cormat_combined))
+cormat_combined <- as.data.frame(cormat_combined)
+dim(cormat_combined)
+rownames(cormat_combined) == colnames(cormat_combined)
+out <- c('MEF2C', 'MYC', 'STAT1')
+cormat_combined <- cormat_combined[-which(rownames(cormat_combined) %in% out), -which(colnames(cormat_combined) %in% out)]
+```
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+cormat <- cormat[colnames(cormat),rev(colnames(cormat))]
+```
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/sel_rel_order.RDS')
+sel_rel <- rev(gsub('_\\+', '', sel_rel))
+cormat <- cormat[sel_rel, sel_rel]
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+melted_cormat$variable <- factor(melted_cormat$variable, levels=unique(melted_cormat$variable))
+melted_cormat$Var1 <- factor(melted_cormat$Var1, levels=rev(unique(melted_cormat$Var1)))
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-4.15,4.15), space = "Lab", 
+    name="F1") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/Unibind_F1_without_numbers_normalized.pdf')
+ggheatmap
+dev.off()
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/Unibind_F1.pdf')
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+dev.off()
+
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/Unibind_F1_without_numbers.pdf')
+ggheatmap
+dev.off()
+#saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_pc.RDS')
+```
+
+What is the overlap between the eregulons here?
+
+```{r}
+eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/eRegulons.bed', header=FALSE)
+#eregulons_df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_genie3_v2/eRegulons.bed', header=FALSE)
+colnames(eregulons_df) <- c('Chromosome', 'Start', 'End', 'Regulon')
+eregulons_df$Name <- paste0(eregulons_df$Chromosome, ':', eregulons_df$Start, '-', eregulons_df$End)
+eregulons_df$TF <- sapply(strsplit(unlist(eregulons_df$Regulon), split = "_"), "[", 1)
+eregulons_list <- list()
+for (TF in unique(eregulons_df$TF)){
+  eregulons_list[[TF]] <- unique(as.vector(unlist(eregulons_df[which(eregulons_df$TF == TF), 'Name'])))
+}
+```
+
+```{r}
+jaccard_a <- function(a, b) {
+    intersection = length(intersect(a, b))
+    union = length(a)
+    return (intersection/union)
+}
+```
+
+```{r}
+regulon_list_regions_sel <- eregulons_list
+regulon_list_regions <- eregulons_list
+vector_list <- list()
+for (name1 in names(regulon_list_regions_sel)){
+  vec <- vector()
+  for (name2 in names(regulon_list_regions_sel)){
+    vec <- c(vec, jaccard_a(regulon_list_regions[[name1]], regulon_list_regions[[name2]]))
+  }
+  vector_list[[name1]] <- data.frame(t(vec))
+}
+jaccard_matrix <- as.matrix(rbindlist(vector_list))
+colnames(jaccard_matrix) <- names(regulon_list_regions_sel)
+rownames(jaccard_matrix) <- names(regulon_list_regions_sel)
+jaccard_matrix <- as.data.frame(jaccard_matrix)
+```
+
+```{r, message = FALSE, warnings = FALSE}
+jaccard_matrix <- round(jaccard_matrix,2)
+```
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/sel_rel_order.RDS')
+sel_rel <- rev(gsub('_\\+', '', sel_rel))
+sel <- sel_rel
+sel <- sel[which(sel %in% rownames(jaccard_matrix))]
+sel_jaccard_matrix <- jaccard_matrix[sel, sel]
+sel_jaccard_matrix$Var1 <- rownames(sel_jaccard_matrix)
+melted_jaccard_matrix <- melt(sel_jaccard_matrix)
+melted_jaccard_matrix$variable <- factor(melted_jaccard_matrix$variable, levels=unique(melted_jaccard_matrix$variable))
+melted_jaccard_matrix$Var1 <- factor(melted_jaccard_matrix$Var1, levels=rev(unique(melted_jaccard_matrix$Var1)))
+# Create heatmap
+ggheatmap <- ggplot(melted_jaccard_matrix, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", space = "Lab", 
+    name="Jaccard") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+xlab('eRegulon A')+ylab('eRegulon B')
+ coord_fixed()
+ 
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/eRegulon_overlap_with_numbers.pdf')
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+dev.off()
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/eRegulon_overlap_without_numbers.pdf')
+ggheatmap 
+dev.off()
+```
+
+
+```{r}
+F1_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_stats/F1_list_genie3.RDS')
+unibind_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_stats/unibind_list_genie3.RDS')
+eregulons_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_stats/eregulon_list_genie3.RDS')
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+colnames(cormat_combined) <- names(eregulons_list)
+rownames(cormat_combined) <- names(unibind_list)
+cormat_combined[is.na(cormat_combined)] <- 0 
+cormat_combined <- cormat_combined[which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.1),which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.1)]
+mean(diag(as.matrix(cormat_combined)), na.rm=T)
+# 0.1083837
+cormat_combined <- t(scale(cormat_combined))
+cormat_combined <- as.data.frame(cormat_combined)
+dim(cormat_combined)
+rownames(cormat_combined) == colnames(cormat_combined)
+cormat_combined <- cormat_combined[-which(rownames(cormat_combined) %in% out), -which(colnames(cormat_combined) %in% out)]
+```
+
+Get correlation between samples and cluster.
+
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+cormat <- cormat[colnames(cormat),rev(colnames(cormat))]
+```
+
+Make correlation heatmap.
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+melted_cormat$variable <- factor(melted_cormat$variable, levels=unique(melted_cormat$variable))
+melted_cormat$Var1 <- factor(melted_cormat$Var1, levels=unique(melted_cormat$Var1))
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-4.18,4.18), space = "Lab", 
+    name="Normalized\nF1") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+# Add correlation values
+#pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/DARs_correlation.pdf')
+ggheatmap + 
+geom_text(aes(variable, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank())
+#dev.off()
+#saveRDS(cormat, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/ATAC_DESEQ/cormat_all_DESEQ_filter_pc.RDS')
+```

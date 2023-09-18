@@ -1,0 +1,3464 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Calculation - Number of TFs, genes, region per method
+
+```{r}
+tfs_per_method <- list()
+gene_regulons_per_method <- list()
+region_regulons_per_method <- list()
+```
+
+- CellOracle
+
+```{r}
+cell_oracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+cell_oracle <- cell_oracle[,c(1,2,3)]
+cell_oracle <- cell_oracle[!duplicated(cell_oracle),]
+gene_regulon_list <- list()
+region_regulon_list <- list()
+for (TF in unique(cell_oracle$TF)){
+  dt <- cell_oracle
+  gene_regulon_list[[TF]] <- unique(dt[which(dt$TF== TF), 'Gene'])
+  region_regulon_list[[TF]] <- unique(dt[which(dt$TF== TF), 'Region'])
+}
+region_regulon_list <- region_regulon_list[which(lengths(gene_regulon_list) > 25)]
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['CellOracle']] <- names(gene_regulon_list)
+gene_regulons_per_method[['CellOracle']] <- gene_regulon_list
+region_regulons_per_method[['CellOracle']] <- region_regulon_list
+```
+
+- Pando
+
+```{r}
+pando <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/modules_pando.tsv')
+pando <- pando[which(pando$padj < 0.01),]
+gene_regulon_list <- list()
+region_regulon_list <- list()
+for (TF in unique(pando$tf)){
+  dt <- pando
+  dt_pos <- dt[which(pando$estimate > 0),]
+  dt_neg <- dt[which(pando$estimate < 0),]
+  gene_regulon_list[[paste0(TF, '_+')]] <- unique(dt_pos[which(dt_pos$tf == TF), 'target'])
+  gene_regulon_list[[paste0(TF, '_-')]] <- unique(dt_neg[which(dt_neg$tf == TF), 'target'])
+  region_regulon_list[[paste0(TF, '_+')]] <- unique(dt_pos[which(dt_pos$tf == TF), 'regions'])
+  region_regulon_list[[paste0(TF, '_-')]] <- unique(dt_neg[which(dt_neg$tf == TF), 'regions'])
+}
+region_regulon_list <- region_regulon_list[which(lengths(gene_regulon_list) > 25)]
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['Pando']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1))
+gene_regulons_per_method[['Pando']] <- gene_regulon_list
+region_regulons_per_method[['Pando']] <- region_regulon_list
+```
+
+- FigR
+
+```{r}
+library(dplyr)
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+figr <- TFenrich.d %>% filter(abs(Score) > 1)
+
+gene_regulon_list <- list()
+for (TF in unique(figr$Motif)){
+  dt <- figr
+  dt_pos <- dt[which(dt$Corr > 0),]
+  dt_neg <- dt[which(dt$Corr < 0),]
+  gene_regulon_list[[paste0(TF, '_+')]] <- unique(dt_pos[which(dt_pos$Motif == TF), 'DORC'])
+  gene_regulon_list[[paste0(TF, '_-')]] <- unique(dt_neg[which(dt_neg$Motif == TF), 'DORC'])
+}
+
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['FigR']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1))
+gene_regulons_per_method[['FigR']] <- gene_regulon_list
+```
+
+- SCENIC+
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+gene_regulon_list <- regulon_list
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+region_regulon_list <- regulon_list
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.RDS')
+```
+
+```{r}
+region_regulon_list <- region_regulon_list[sel_rel]
+gene_regulon_list <- gene_regulon_list[sel_rel]
+tfs_per_method[['SCENIC+']] <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+gene_regulons_per_method[['SCENIC+']] <- gene_regulon_list
+region_regulons_per_method[['SCENIC+']] <- region_regulon_list
+```
+
+- SCENIC+ - SCREEN
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/SCENIC+_gene_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+gene_regulon_list <- regulon_list
+```
+
+```{r}
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/SCENIC+_region_based.loom'
+loom <- open_loom(loom_path)
+
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+region_regulon_list <- regulon_list
+```
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/HQ_regulons_07.RDS')
+```
+
+```{r}
+region_regulon_list <- region_regulon_list[sel_rel]
+gene_regulon_list <- gene_regulon_list[sel_rel]
+tfs_per_method[['SCENIC+ (S)']] <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+gene_regulons_per_method[['SCENIC+ (S)']] <- gene_regulon_list
+region_regulons_per_method[['SCENIC+ (S)']] <- region_regulon_list
+```
+
+- GRaNIE
+
+```{r}
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+gene_regulon_list <- list()
+region_regulon_list <- list()
+for (TF in unique(as.vector(unlist(granie$TF.ENSEMBL)))){
+  if (!is.na(TF)){
+    dt <- granie
+    dt_pos <- dt[which(granie$TF_peak.fdr_direction == 'pos'),]
+    dt_neg <- dt[which(granie$TF_peak.fdr_direction == 'neg'),]
+    gene_regulon_list[[paste0(TF, '_+')]] <- unique(as.vector(unlist(dt_pos[which(dt_pos$TF.ENSEMBL == TF), 'gene.ENSEMBL'])))
+    gene_regulon_list[[paste0(TF, '_-')]] <- unique(as.vector(unlist(dt_neg[which(dt_neg$TF.ENSEMBL == TF), 'gene.ENSEMBL'])))
+    region_regulon_list[[paste0(TF, '_+')]] <- unique(as.vector(unlist(dt_pos[which(dt_pos$TF.ENSEMBL == TF), 'peak.ID'])))
+    region_regulon_list[[paste0(TF, '_-')]] <- unique(as.vector(unlist(dt_neg[which(dt_neg$TF.ENSEMBL == TF), 'peak.ID'])))
+  }
+}
+region_regulon_list <- region_regulon_list[which(lengths(gene_regulon_list) > 25)]
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['GRaNIE']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1)) 
+gene_regulons_per_method[['GRaNIE']] <- gene_regulon_list
+region_regulons_per_method[['GRaNIE']] <- region_regulon_list
+```
+
+- SCENIC - V9
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost_v9_similarity/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='MotifRegulons')
+gene_regulon_list <- list()
+for (row in rownames(regulons)){
+  gene_regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['SCENIC (v9)']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1)) 
+gene_regulons_per_method[['SCENIC (v9)']] <- gene_regulon_list
+```
+
+- SCENIC - V10 (unclustered)
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost_v10_unclust/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='MotifRegulons')
+gene_regulon_list <- list()
+for (row in rownames(regulons)){
+  gene_regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['SCENIC (v10u)']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1)) 
+gene_regulons_per_method[['SCENIC (v10u)']] <- gene_regulon_list
+```
+
+- SCENIC - V10 (clustered)
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost_v10_clust/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='MotifRegulons')
+gene_regulon_list <- list()
+for (row in rownames(regulons)){
+  gene_regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['SCENIC (v10c)']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1)) 
+gene_regulons_per_method[['SCENIC (v10c)']] <- gene_regulon_list
+```
+
+- SCENIC - V10 (unclustered+clustered)
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost_v10_clust_and_unclust/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='MotifRegulons')
+gene_regulon_list <- list()
+for (row in rownames(regulons)){
+  gene_regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+gene_regulon_list <- gene_regulon_list[which(lengths(gene_regulon_list) > 25)]
+tfs_per_method[['SCENIC (v10)']] <- unique(sapply(strsplit(names(gene_regulon_list), split = "_"), "[", 1)) 
+gene_regulons_per_method[['SCENIC (v10)']] <- gene_regulon_list
+```
+
+```{r}
+saveRDS(tfs_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+saveRDS(gene_regulons_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+saveRDS(region_regulons_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/region_regulons_per_method.RDS')
+```
+
+# Panel c
+## Number of genes per regulon
+
+```{r}
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+dt <- data.frame()
+for (name in names(gene_regulons_per_method)){
+  print(name)
+  print(median(lengths(gene_regulons_per_method[[name]])))
+  print(mean(lengths(gene_regulons_per_method[[name]])))
+  x <- as.data.frame(cbind(lengths(gene_regulons_per_method[[name]]), rep(name, length(gene_regulons_per_method[[name]]))))
+  colnames(x) <-  c('Value', 'Method')
+  dt <- rbind(dt, x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels = c('SCENIC+', "SCENIC+ (S)", 'SCENIC (v9)', 'SCENIC (v10c)', 'SCENIC (v10u)', 'SCENIC (v10)', 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelc/Number_of_genes_per_regulon_all.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dt <- dt[-grep('v9', dt$Method),]
+dt <- dt[-grep('v10c', dt$Method),]
+dt <- dt[-grep('v10u', dt$Method),]
+dt <- dt[-grep('(S)', dt$Method, fixed=TRUE),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelc/Number_of_genes_per_regulon_main.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+## Number of regions per regulon
+```{r}
+region_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/region_regulons_per_method.RDS')
+dt <- data.frame()
+for (name in names(region_regulons_per_method)){
+  print(name)
+  print(median(lengths(region_regulons_per_method[[name]])))
+  #print(mean(lengths(region_regulons_per_method[[name]])))
+  x <- as.data.frame(cbind(lengths(region_regulons_per_method[[name]]), rep(name, length(region_regulons_per_method[[name]]))))
+  colnames(x) <-  c('Value', 'Method')
+  dt <- rbind(dt, x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels = c('SCENIC+', "SCENIC+ (S)", 'SCENIC (v9)', 'SCENIC (v10c)', 'SCENIC (v10u)', 'SCENIC (v10)', 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelc/Number_of_regions_per_regulon_drop.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+dt <- dt[-grep('(S)', dt$Method, fixed=TRUE),]
+dt[,2] <- factor(dt[,2], levels = c('SCENIC+', "SCENIC", 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelc/Number_of_regions_per_regulon_main.pdf')
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') +scale_x_discrete(drop=FALSE)
+#ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# regions') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') +scale_x_discrete(drop=FALSE)
+```
+
+## Number of TFs per method
+
+```{r}
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- cbind(as.data.frame(lengths(tfs_per_method)), names(tfs_per_method))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+dt[,2] <- factor(dt[,2], levels = rev(c('SCENIC+', "SCENIC+ (S)", 'SCENIC (v9)', 'SCENIC (v10c)', 'SCENIC (v10u)', 'SCENIC (v10)', 'GRaNIE', 'CellOracle', 'Pando', 'FigR')))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelc/Number_of_TFs_per_method.pdf')
+ggplot(data, aes(fill=Method, y=value, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale 
+dev.off()
+
+ggplot(data, aes(fill=Method, y=value, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+
+data <- data[-grep('v9', data$Method),]
+data <- data[-grep('v10c', data$Method),]
+data <- data[-grep('v10u', data$Method),]
+data <- data[-grep('(S)', data$Method, fixed=TRUE),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelc/Number_of_TFs_per_method_main.pdf')
+ggplot(data, aes(fill=Method, y=value, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+dev.off()
+
+ggplot(data, aes(fill=Method, y=value, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# TFs') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+```
+
+# Panel d - TF recovery
+
+## Suppl - For all, including SCENIC versions
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+df <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+  names(y) <- names(ordered_ls)
+  x <- 1:length(y)
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') 
+```
+
+```{r}
+# Zoom in in the beginning part
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') + xlim(c(0,40)) + ylim(c(0,20))
+```
+
+```{r}
+df3 <- df2
+df3 <- df3[which(df3$x <=40),]
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df3$x <- range01(df3$x)
+df3$y <- range01(df3$y)
+library(DescTools)
+auc_list<-list()
+for (method in unique(df3$Method)){
+  auc_list[[method]] <- AUC(df3[which(df3$Method == method), c('x')], df3[which(df3$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_Unibind_AUC.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+## Use precision/recall instead
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+library(ROCit)
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  #rocs <- evalmod(scores = ordered_ls, labels = labels)$rocs
+  rocs <- measureit(score = ordered_ls, class = labels)
+  y <- (as.vector(unlist(rocs$TP)))/(as.vector(unlist(rocs$TP))+as.vector(unlist(rocs$FP)))
+  #y <- (as.vector(unlist(rocs$TP)))/(as.vector(unlist(rocs$TP))+as.vector(unlist(rocs$FN)))
+  x <- (as.vector(unlist(rocs$FN)))/(as.vector(unlist(rocs$FN))+as.vector(unlist(rocs$TN)))
+  #x <- (as.vector(unlist(rocs$FP)))/(as.vector(unlist(rocs$FP))+as.vector(unlist(rocs$TN)))
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+df2 <- df2[order(df2$x),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_ROCs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TPR') + xlab('FPR') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TPR') + xlab('FPR') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- dfx
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_ROCs_AUC.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('ROCAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('ROCAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$prcs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_PRs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- dfx
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_PRs_AUC.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+## Main - Selected methods
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+df <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+  names(y) <- names(ordered_ls)
+  x <- 1:length(y)
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_main.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') 
+```
+
+```{r}
+# Zoom in in the beginning part
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_classic() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks') + xlim(c(0,40)) + ylim(c(0,20))
+```
+```{r}
+df3 <- df2
+df3 <- df3[which(df3$x <=40),]
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df3$x <- range01(df3$x)
+df3$y <- range01(df3$y)
+library(DescTools)
+auc_list<-list()
+for (method in unique(df3$Method)){
+  auc_list[[method]] <- AUC(df3[which(df3$Method == method), c('x')], df3[which(df3$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_Unibind_AUC_main.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+```
+
+## Use precision/recall instead - Selected methods
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$rocs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('x', 'y', 'Method')
+df2$Method <- as.factor(df2$Method)
+df2$Method <- droplevels(df2$Method)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_selected_ROCs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TPR') + xlab('FPR') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TPR') + xlab('FPR') 
+```
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df2 <- dfx
+colnames(df2) <- c('Value', 'anal')
+df2[,1] <- as.numeric(df2[,1])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('Value', 'Method')
+df2$Value <- as.numeric(unlist(df2$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_selected_ROCs_AUC.pdf')
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('ROCAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('ROCAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$prcs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('x', 'y', 'Method')
+df2$Method <- as.factor(df2$Method)
+df2$Method <- droplevels(df2$Method)
+colnames(df2) <- c('x', 'y', 'Method')
+df2 <- df2[order(df2$y),] 
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_selected_PRs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df2 <- dfx
+colnames(df2) <- c('Value', 'anal')
+df2[,1] <- as.numeric(df2[,1])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('Value', 'Method')
+df2$Value <- as.numeric(unlist(df2$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_selected_PRs_AUC.pdf')
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+## Check overlaps between methods
+
+### Upset/Euler
+
+```{r}
+library(UpSetR)
+hit_tfs_filt <- list()
+for (name in c('CellOracle', 'Pando', 'FigR', 'SCENIC+', 'GRaNIE', 'SCENIC (v10)')){
+  hit_tfs_filt[[name]] <- unique(tfs_per_method[[name]][which(tfs_per_method[[name]] %in% names(ls))])
+}
+names(hit_tfs_filt)[6] <- 'SCENIC'
+hit_tfs_filt_all <- list()
+for (name in names(tfs_per_method)){
+  hit_tfs_filt_all[[name]] <- unique(tfs_per_method[[name]][which(tfs_per_method[[name]] %in% names(ls))])
+}
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Upset.pdf')
+par(las=2)
+upset(fromList(hit_tfs_filt), order.by = "freq", mainbar.y.label = "Number of hits", nsets = 6) 
+dev.off()
+upset(fromList(hit_tfs_filt), order.by = "freq", mainbar.y.label = "Number of hits", nsets = 6)
+```
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Upset_all.pdf')
+par(las=2)
+upset(fromList(hit_tfs_filt_all), order.by = "freq", mainbar.y.label = "Number of hits", nsets = 10)
+dev.off()
+upset(fromList(hit_tfs_filt_all), order.by = "freq", mainbar.y.label = "Number of hits", nsets = 10)
+```
+
+```{r}
+library(eulerr)
+y <- euler(hit_tfs_filt)
+myColors <- c("CellOracle"= 'forestgreen', "Pando"= 'dodgerblue', "FigR"= 'purple', "SCENIC+"= 'red', 'GRaNIE'='orange', "SCENIC"='deeppink')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Euler.pdf')
+plot(y, quantities = T, fills=myColors)
+dev.off()
+plot(y, quantities = T, fills=myColors)
+```
+
+```{r}
+library(eulerr)
+y <- euler(hit_tfs_filt_all)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Euler_all.pdf')
+plot(y, quantities = T, fills=myColors)
+dev.off()
+plot(y, quantities = T, fills=myColors)
+```
+
+### Calculate Tau values
+
+```{r}
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+dgem <- get_dgem(loom)
+cells_AUC <- getAUC(get_regulons_AUC(loom, column.attr.name='RegulonsAUC'))
+cell_data <- get_cell_annotation(loom)
+```
+
+```{r}
+expression_list <- list()
+for (x in unique(cell_data$ACC_Cell_type)){
+  print(x)
+  expression_list[[x]] <- as.data.frame(t(rowSums(dgem[,grep(x, cell_data$ACC_Cell_type)])))
+}
+library(tispec)
+exp_mat <- t(data.table::rbindlist(expression_list))
+colnames(exp_mat) <- names(expression_list)
+log2Exp <- log2Tran(exp_mat)
+exp_mat <- quantNorm(log2Exp)
+exp_mat <- exp_mat[names(ls),]
+colnames(exp_mat)  <-  unique(cell_data$ACC_Cell_type)
+```
+
+```{r}
+tauExp <- calcTau(exp_mat) 
+```
+
+```{r}
+library(zoo)
+tauExp$dpt <- 1:nrow(tauExp)
+library(tidyr)
+library(ggplot2)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Tau_overunibind.pdf')
+p <- ggplot(tauExp, mapping = aes(x=dpt, y=tau)) + theme_classic() + xlab('Ranked by unibind') + ylab('Tau') + theme_bw()
+p + geom_smooth(aes(color = tau), method = 'gam', se=F, color = 'Red')
+dev.off()
+```
+
+### Boxplot tau for methods
+
+```{r}
+dt <- data.frame()
+tau_list <- list()
+for (name in names(hit_tfs_filt)){
+  t <- as.numeric(tauExp[hit_tfs_filt[[name]],'tau'])
+  x <- cbind(t, rep(name, length(hit_tfs_filt[[name]])))
+  colnames(x) <-  c('Value', 'Method')
+  dt <- rbind(dt, x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels =  c('SCENIC+', 'SCENIC', 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Tau_per_method.pdf')
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Tau') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Tau') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+```
+
+```{r}
+dt <- data.frame()
+tau_list <- list()
+for (name in names(hit_tfs_filt_all)){
+  t <- as.numeric(tauExp[hit_tfs_filt_all[[name]],'tau'])
+  x <- cbind(t, rep(name, length(hit_tfs_filt_all[[name]])))
+  colnames(x) <-  c('Value', 'Method')
+  dt <- rbind(dt, x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+dt <- as.data.frame(dt)
+dt[,1] <- as.numeric(dt[,1])
+dt[,2] <- as.factor(dt[,2])
+dt[,2] <- factor(dt[,2], levels = c('SCENIC+', 'SCENIC+ (S)', 'SCENIC (v9)', 'SCENIC (v10c)', 'SCENIC (v10u)', 'SCENIC (v10)', 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/Tau_per_method_all.pdf')
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Tau') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill=reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Tau') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+```
+
+### Dotplot overlap
+
+```{r}
+library(RVenn)
+toy  <- Venn(hit_tfs_filt)
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/overlap_between_methods.pdf', height=16, width=8)
+setmap(toy, method = "complete")
+dev.off()
+```
+
+```{r}
+library(RVenn)
+toy  <- Venn(hit_tfs_filt_all)
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/overlap_between_methods_all.pdf', height=16, width=8)
+setmap(toy, method = "complete")
+dev.off()
+```
+
+# Panel e - TF-to-region
+
+```{r}
+region_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/region_regulons_per_method.RDS')
+consensus_peaks <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/MACS_ATAC/iterative/peak_filtering_norm/combined_summits_final.bed')
+consensus_peaks <- paste0(consensus_peaks[,1], ':', consensus_peaks[,2], '-', consensus_peaks[,3])
+```
+
+```{r}
+# Fix region names for CellOracle
+for (i in 1:length(region_regulons_per_method[['CellOracle']])){
+  x <- region_regulons_per_method[['CellOracle']][[i]]
+  Chromosome <- sapply(strsplit(x, split = "_"), "[", 1)
+  Start <- sapply(strsplit(x, split = "_"), "[", 2)
+  End <- sapply(strsplit(x, split = "_"), "[", 3)
+  Region_id <- paste0(Chromosome, ':', Start, '-', End)
+  region_regulons_per_method[['CellOracle']][[i]] <- Region_id
+}
+```
+
+```{r}
+# Intersect Pando regions with consensus (gives SCREEN regions)
+library(rtracklayer)
+consensus_gr <- import('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/MACS_ATAC/iterative/peak_filtering_norm/combined_summits_final.bed')
+for (i in 1:length(region_regulons_per_method[['Pando']])){
+  x <- region_regulons_per_method[['Pando']][[i]]
+  x <- as.vector(unlist(strsplit(x, ';')))
+  Chromosome <- sapply(strsplit(x, split = "-"), "[", 1)
+  Start <- sapply(strsplit(x, split = "-"), "[", 2)
+  End <- sapply(strsplit(x, split = "-"), "[", 3)
+  gr <- as.data.frame(cbind(Chromosome, Start, End))
+  colnames(gr) <- c('seqnames', 'start', 'end')
+  gr <- makeGRangesFromDataFrame(gr)
+  m <- findOverlaps(gr, consensus_gr)
+  c <- cbind(as.data.frame(gr[queryHits(m),] ,row.names=NULL), as.data.frame(consensus_gr[subjectHits(m),], row.names=NULL))
+  Region_id <- unique(paste0(c[,6], ':', c[,7]-1, '-', c[,8]))
+  region_regulons_per_method[['Pando']][[i]] <- Region_id
+}
+```
+
+```{r}
+# Convert to bed files
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed_hq/'
+for (name in c('GRaNIE', 'SCENIC+', 'Pando', 'CellOracle')){
+  x <- region_regulons_per_method[[name]]
+  df <- data.frame()
+  for (name2 in names(x)){
+    y <- x[[name2]]
+    Chromosome <- sapply(strsplit(y, split = ":"), "[", 1)
+    Coordinates <- sapply(strsplit(y, split = ":"), "[", 2)
+    Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+    End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+    Name <- rep(name2, length(Chromosome))
+    df <- rbind(df, cbind(Chromosome, Start, End, Name))
+  }
+  write.table(df, paste0(path,name, '_regions.tsv'), sep='\t', quote=FALSE, col.names=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/'
+files <- list.files(path)
+unibind_list <- list()
+for (file in files){
+  df <- read.delim(paste0(path, file), header=FALSE)
+  TF <- strsplit(file, split = "\\.")[[1]][3]
+  regions <- paste0(df[,1], ':', df[,2], '-', df[,3])
+  if (TF %in% names(unibind_list)){
+    unibind_list[[TF]] <- unique(c(unibind_list[[TF]], regions))
+  } else {
+    unibind_list[[TF]]  <- unique(regions)
+  }
+}
+saveRDS(unibind_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_to_consensus.RDS')
+```
+
+```{r}
+# Merge + and - when possible
+unibind_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/unibind_to_consensus.RDS')
+methods <- c('SCENIC+', 'SCENIC+ (S)', 'GRaNIE', 'Pando')
+for (method in methods){
+  regulon_list <- region_regulons_per_method[[method]]
+  l <- names(regulon_list)
+  names(regulon_list) <- substr(l,1,nchar(l)-2)
+  regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+  region_regulons_per_method[[method]] <- regulon_list
+}
+```
+
+```{r}
+# Stats
+method <- 'SCENIC+'
+eregulons_list <- region_regulons_per_method[[method]]
+unibind_list_x <- unibind_list[which(names(unibind_list) %in% names(eregulons_list))]
+eregulons_list <- eregulons_list[which(names(eregulons_list) %in% names(unibind_list_x))]
+eregulons_list <- eregulons_list[names(unibind_list_x)]
+y <- list()
+x <- list()
+for (i in 1:length(eregulons_list)){
+  y[[i]] <- unique(eregulons_list[[i]][which(eregulons_list[[i]] %in% unibind_list_x[[i]])])
+  x[[i]] <-  unique(unibind_list_x[[i]])
+}
+
+stat <- lengths(y)/lengths(x)
+```
+
+```{r}
+library(caret)
+metrics_list <- list()
+for (method in names(region_regulons_per_method)){
+  eregulons_list <- region_regulons_per_method[[method]]
+  unibind_list_x <- unibind_list[which(names(unibind_list) %in% names(eregulons_list))]
+  eregulons_list <- eregulons_list[which(names(eregulons_list) %in% names(unibind_list_x))]
+  eregulons_list <- eregulons_list[names(unibind_list_x)]
+  print(method)
+  print(length(eregulons_list))
+  prec_list <- list()
+  recall_list <- list()
+  F1_list <- list()
+  for (TF in names(unibind_list_x)){
+    true_pos <- rep(0, length(consensus_peaks))
+    true_pos[which(consensus_peaks %in% unibind_list_x[[TF]])] <- 1
+    true_pos <- as.factor(true_pos)
+    prec_vector <- vector()
+    recall_vector <- vector()
+    F1_vector <- vector()
+    for (TF_2 in names(eregulons_list)){
+      pred_pos <- rep(0, length(consensus_peaks))
+      pred_pos[which(consensus_peaks %in% eregulons_list[[TF_2]])] <- 1
+      pred_pos <- as.factor(pred_pos)
+      precision <- posPredValue(pred_pos, true_pos, positive="1", na.rm = TRUE)
+      recall <- sensitivity(pred_pos, true_pos, positive="1")
+      F1 <- (2 * precision * recall) / (precision + recall)
+      prec_vector <- c(prec_vector, precision)
+      recall_vector <- c(recall_vector, recall)
+      F1_vector <- c(F1_vector, F1)
+    }
+    prec_list[[TF]] <-prec_vector
+    recall_list[[TF]] <- recall_vector
+    F1_list[[TF]] <- F1_vector
+  }
+  metrics_list[[method]] <- list()
+  metrics_list[[method]][['Precision']] <- prec_list
+  metrics_list[[method]][['Recall']] <- recall_list
+  metrics_list[[method]][['F1']] <- F1_list
+}
+saveRDS(metrics_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tf_to_region_metrics_list.RDS')
+```
+
+## Boxplot
+
+```{r}
+metrics_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tf_to_region_metrics_list.RDS')
+```
+
+```{r}
+precision_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['Precision']]))
+  precision_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(precision_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(precision_list[[name]])) > 0){
+  precision_list[[name]] <- precision_list[[name]][-which(is.na(precision_list[[name]]))]
+  }
+}
+
+recall_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['Recall']]))
+  recall_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(recall_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(recall_list[[name]])) > 0){
+    recall_list[[name]] <- recall_list[[name]][-which(is.na(recall_list[[name]]))]
+  }
+}
+
+F1_list <- list()
+for (name in names(metrics_list)){
+  x <- metrics_list[[name]]
+  cormat_combined <- data.frame(do.call(rbind, x[['F1']]))
+  F1_list[[name]] <- diag(as.matrix(cormat_combined))
+  names(F1_list[[name]]) <- rownames(cormat_combined)
+  if (sum(is.na(F1_list[[name]])) > 0){
+    F1_list[[name]] <- F1_list[[name]][-which(is.na(F1_list[[name]]))]
+  }
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+d <- data.frame(x = unlist(F1_list), 
+                  grp = rep(names(F1_list)[1:length(F1_list)],times = sapply(F1_list,length)))
+d <- d[complete.cases(d),]
+
+write.table(d, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/Unibind_F1_values.tsv', sep='\t', quote=FALSE)
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+
+d <- data.frame(x = unlist(precision_list), 
+                  grp = rep(names(precision_list)[1:length(precision_list)],times = sapply(precision_list,length)))
+d <- d[complete.cases(d),]
+
+write.table(d, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/Unibind_precision_values.tsv', sep='\t', quote=FALSE)
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Precision_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+
+d <- data.frame(x = unlist(recall_list), 
+                  grp = rep(names(recall_list)[1:length(recall_list)],times = sapply(recall_list,length)))
+d <- d[complete.cases(d),]
+write.table(d, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/Unibind_recall_values.tsv', sep='\t', quote=FALSE)
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Recall_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+d <- data.frame(x = unlist(F1_list), 
+                  grp = rep(names(F1_list)[1:length(F1_list)],times = sapply(F1_list,length)))
+d <- d[complete.cases(d),]
+d <- d[-which(d$grp == 'SCENIC+ (S)'),]
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_F1_main.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_F1_main_drop.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+
+d <- data.frame(x = unlist(precision_list), 
+                  grp = rep(names(precision_list)[1:length(precision_list)],times = sapply(precision_list,length)))
+d <- d[complete.cases(d),]
+d <- d[-which(d$grp == 'SCENIC+ (S)'),]
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Precision_to_region_F1_main.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Precision_to_region_F1_main_drop.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+
+d <- data.frame(x = unlist(recall_list), 
+                  grp = rep(names(recall_list)[1:length(recall_list)],times = sapply(recall_list,length)))
+d <- d[complete.cases(d),]
+d <- d[-which(d$grp == 'SCENIC+ (S)'),]
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Recall_to_region_F1_main.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Recall_to_region_F1_main_drop.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10') + scale_x_discrete(drop=FALSE)
+```
+
+
+## Nr regulons with F1 > 0.03
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+thr <- 0.03
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+data <- cbind(c(sum(F1_list[['SCENIC+']] > thr), sum(F1_list[['Pando']] > thr), sum(F1_list[['GRaNIE']] > thr), sum(F1_list[['CellOracle']] > thr)), c('SCENIC+', 'Pando', 'GRaNIE', 'CellOracle'))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/RegulonswF1003.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('eRegulons with F1 > 0.03') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+dev.off()
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+thr <- 0.03
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+data <- cbind(c(sum(F1_list[['SCENIC+']] > thr), sum(F1_list[['Pando']] > thr), sum(F1_list[['GRaNIE']] > thr), sum(F1_list[['CellOracle']] > thr), 0, 0), c('SCENIC+', 'Pando', 'GRaNIE', 'CellOracle', 'FigR', 'SCENIC'))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/RegulonswF1003_allmethods.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('eRegulons with F1 > 0.03') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+dev.off()
+```
+
+
+## Overlap heatmap
+
+```{r}
+tfs <- list()
+for (name in names(F1_list)){
+  tfs[[name]] <- names(F1_list[[name]][which(F1_list[[name]] > thr)])
+}
+tfs <- tfs[which(lengths(tfs)>0)]
+```
+
+```{r}
+library(RVenn)
+toy  <- Venn(tfs)
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/overlap_regulons_with_good_F1.pdf', height=16, width=8)
+setmap(toy, method = "complete")
+dev.off()
+```
+
+## Unibind deatmap for SCENIC+
+
+```{r}
+metrics_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tf_to_region_metrics_list.RDS')
+```
+
+```{r}
+F1_list <- metrics_list[['SCENIC+']][['F1']]
+cormat_combined <- data.frame(do.call(rbind, F1_list))
+colnames(cormat_combined) <- rownames(cormat_combined)
+cormat_combined[is.na(cormat_combined)] <- 0 
+library(MatrixGenerics)
+cormat_combined <- cormat_combined[which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.02),which(colMaxs(as.matrix(cormat_combined),na.rm=T) > 0.02)]
+mean(diag(as.matrix(cormat_combined)), na.rm=T)
+cormat_combined <- t(scale(cormat_combined))
+cormat_combined <- as.data.frame(cormat_combined)
+dim(cormat_combined)
+rownames(cormat_combined) == colnames(cormat_combined)
+out <- c('MEF2C', 'IRF1', 'NR3C1', 'SREBF1', 'JUN', 'MYC', 'GATA3', 'MEF2C', 'STAT1', 'ESR1', 'ELF3', 'TP53', 'CEBPB', 'ETV6')
+cormat_combined <- cormat_combined[-which(rownames(cormat_combined) %in% out), -which(colnames(cormat_combined) %in% out)]
+```
+```{r, message = FALSE, warnings = FALSE}
+cormat <- round(cormat_combined,2)
+colnames(cormat) <- rownames(cormat)
+#dist.mat <- dist(cormat)
+#clust <- hclust(dist.mat)
+#cormat <- cormat[clust$order,rev(clust$order)]
+cormat <- cormat[colnames(cormat),rev(colnames(cormat))]
+sel_rel <- colnames(cormat)
+```
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+cormat$Var1 <- rownames(cormat)
+melted_cormat <- melt(cormat)
+melted_cormat$variable <- factor(melted_cormat$variable, levels=unique(melted_cormat$variable))
+melted_cormat$Var1 <- factor(melted_cormat$Var1, levels=unique(melted_cormat$Var1))
+# Create heatmap
+ggheatmap <- ggplot(melted_cormat, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", space = "Lab", 
+    name="Normalized\nF1") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+
+ coord_fixed()
+
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Unibind_regulon_overlap.pdf')
+ggheatmap 
+dev.off()
+```
+
+## Jaccard Heatmap
+
+```{r}
+region_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/region_regulons_per_method.RDS')
+methods <- c('SCENIC+', 'SCENIC+ (S)', 'GRaNIE', 'Pando')
+for (method in methods){
+  regulon_list <- region_regulons_per_method[[method]]
+  l <- names(regulon_list)
+  names(regulon_list) <- substr(l,1,nchar(l)-2)
+  regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+  region_regulons_per_method[[method]] <- regulon_list
+}
+```
+
+```{r}
+jaccard_a <- function(a, b) {
+    intersection = length(intersect(a, b))
+    union = length(a)
+    return (intersection/union)
+}
+```
+
+```{r}
+regulon_list_regions <-  region_regulons_per_method[['SCENIC+']]
+vector_list <- list()
+sel_rel <- sel_rel[which(sel_rel %in% names(regulon_list_regions))]
+for (name1 in sel_rel){
+  vec <- vector()
+  for (name2 in sel_rel){
+    vec <- c(vec, jaccard_a(regulon_list_regions[[name1]], regulon_list_regions[[name2]]))
+  }
+  vector_list[[name1]] <- data.frame(t(vec))
+}
+jaccard_matrix <- as.matrix(data.table::rbindlist(vector_list))
+colnames(jaccard_matrix) <- sel_rel
+rownames(jaccard_matrix) <- sel_rel
+#jaccard_matrix <- t(scale(jaccard_matrix))
+jaccard_matrix <- as.data.frame(jaccard_matrix)
+```
+
+```{r, message = FALSE, warnings = FALSE}
+jaccard_matrix <- round(jaccard_matrix,2)
+```
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+jaccard_matrix$Var1 <- rownames(jaccard_matrix)
+melted_jaccard_matrix <- melt(jaccard_matrix)
+melted_jaccard_matrix$variable <- factor(melted_jaccard_matrix$variable, levels=unique(melted_jaccard_matrix$variable))
+melted_jaccard_matrix$Var1 <- factor(melted_jaccard_matrix$Var1, levels=rev(unique(melted_jaccard_matrix$Var1)))
+# Create heatmap
+ggheatmap <- ggplot(melted_jaccard_matrix, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", space = "Lab", 
+    name="Jaccard") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+xlab('eRegulon A')+ylab('eRegulon B')
+ coord_fixed()
+ 
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/Overlap_between_eRegulons.pdf')
+ggheatmap
+dev.off()
+```
+
+## Seppe's violin
+
+### Unibind
+
+```{r}
+data <- data.table::fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/Unibind_F1_values.tsv', sep='\t')
+colnames(data) <- c('TF_name', 'x', 'grp')
+data <- data[complete.cases(data),]
+data$TF_name <- sapply(strsplit(data$TF_name, '\\.'), '[', 2)
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+data <- data[-which(data$grp %in% 'SCENIC+ (S)'),]
+table(data$grp)
+```
+
+```{R}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'x', 'grp')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_Unibind_Seppe_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- data.table::fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/Unibind_precision_values.tsv', sep='\t')
+colnames(data) <- c('TF_name', 'x', 'grp')
+data <- data[complete.cases(data),]
+data$TF_name <- sapply(strsplit(data$TF_name, '\\.'), '[', 2)
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+data <- data[-which(data$grp %in% 'SCENIC+ (S)'),]
+```
+```{R}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'x', 'grp')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR','SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_Unibind_Seppe_precision.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- data.table::fread('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/Unibind_recall_values.tsv', sep='\t')
+colnames(data) <- c('TF_name', 'x', 'grp')
+data <- data[complete.cases(data),]
+data$TF_name <- sapply(strsplit(data$TF_name, '\\.'), '[', 2)
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+data <- data[-which(data$grp %in% 'SCENIC+ (S)'),]
+```
+```{R}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'x', 'grp')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR','SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_Unibind_Seppe_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) +   scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+### ChIP-seq
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/DPCL_chip_seq_comparison/F1.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_ChIP-seq_Seppe_F1.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/DPCL_chip_seq_comparison/PREC.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR','SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_ChIP-seq_Seppe_precision.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/DPCL_chip_seq_comparison/REC.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR','SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_ChIP-seq_Seppe_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+### Enformer
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/enformer_comparison/F1.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+table(data$grp)
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_enformer_Seppe_F1.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/enformer_comparison/PREC.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR','SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_enformer_Seppe_precision.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+```{r}
+data <- as.data.frame(data.table::fread('/staging/leuven/stg_00002/lcb/sdewin/PhD/papers/SCENICPLUS_BravoDeWinter_etal_2022/revisions_nat_meth/enformer_comparison/REC.tsv', header=TRUE))
+colnames(data) <- c('TF_name', 'grp', 'x')
+data <- data[complete.cases(data),]
+data$TF_name[-which(data$TF_name %in% c('HNF4A', 'GATA2', 'FOXA1', 'STAT5A'))] <- ''
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+library(ggrepel)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('TF_name', 'grp', 'x')
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE','Pando', 'CellOracle',  'FigR','SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panele/TF_to_region_enformer_Seppe_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) + scale_y_continuous(trans='log10') + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+```
+
+# Panel f - Region to gene
+
+## Load region to gene links
+
+
+```{r}
+region_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/region_regulons_per_method.RDS')
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+nr_links_per_gene <- list()
+method_list <- list()
+library(dplyr)
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+nr_links_per_gene[['FigR']] <- table(figr$Gene)
+method_list[['FigR']] <- rep('FigR', length(table(figr$Gene)))
+figr_grn <- figr[which(figr$Gene %in% as.vector(unlist(gene_regulons_per_method[['FigR']]))),]
+nr_links_per_gene[['FigR (GRN)']] <- table(figr_grn$Gene)
+method_list[['FigR (GRN)']] <- rep('FigR (GRN)', length(table(figr_grn$Gene)))
+dim(figr)
+dim(figr_grn)
+# Celloracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+celloracle <- celloracle[,c('Gene', 'Region', 'coaccess')]
+celloracle <- celloracle[which(celloracle$coaccess > 0.8),]
+celloracle <- celloracle[!duplicated(celloracle),]
+celloracle_grn <- celloracle[which(celloracle$Gene %in% as.vector(unlist(gene_regulons_per_method[['CellOracle']]))),]
+celloracle_grn <- celloracle_grn[which(celloracle_grn$Region %in% as.vector(unlist(region_regulons_per_method[['CellOracle']]))),]
+nr_links_per_gene[['CellOracle']] <- table(celloracle$Gene)
+method_list[['CellOracle']] <- rep('CellOracle', length(table(celloracle$Gene)))
+nr_links_per_gene[['CellOracle (GRN)']] <- table(celloracle_grn$Gene)
+method_list[['CellOracle (GRN)']] <- rep('CellOracle (GRN)', length(table(celloracle_grn$Gene)))
+dim(celloracle)
+dim(celloracle_grn)
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.peak_to_gene.RDS')
+granie <- as.data.frame(granie)
+granie <- granie[which(granie$peak_gene.r > 0),]
+granie <- granie[which(granie$padj<0.2),]
+granie$gene.ENSEMBL <- as.vector(unlist(granie$gene.ENSEMBL))
+granie$peak.ID <- as.vector(unlist(granie$peak.ID))
+granie_grn <- granie[which(granie$gene.ENSEMBL %in% as.vector(unlist(gene_regulons_per_method[['GRaNIE']]))),]
+granie_grn <- granie_grn[which(granie_grn$peak.ID %in% as.vector(unlist(region_regulons_per_method[['GRaNIE']]))),]
+nr_links_per_gene[['GRaNIE']] <- table(granie$gene.ENSEMBL)
+method_list[['GRaNIE']] <- rep('GRaNIE', length(table(granie$gene.ENSEMBL)))
+nr_links_per_gene[['GRaNIE (GRN)']] <- table(granie_grn$gene.ENSEMBL)
+method_list[['GRaNIE (GRN)']] <- rep('GRaNIE (GRN)', length(table(granie_grn$gene.ENSEMBL)))
+dim(granie)
+dim(granie_grn)
+# SCENIC+
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+scenicplus_grn <- scenicplus[which(scenicplus$target %in% as.vector(unlist(gene_regulons_per_method[['SCENIC+']]))),]
+scenicplus_grn <- scenicplus_grn[which(scenicplus_grn$region %in% as.vector(unlist(region_regulons_per_method[['SCENIC+']]))),]
+nr_links_per_gene[['SCENIC+']] <- table(scenicplus$target)
+method_list[['SCENIC+']] <- rep('SCENIC+', length(table(scenicplus$target)))
+nr_links_per_gene[['SCENIC+ (GRN)']] <- table(scenicplus_grn$target)
+method_list[['SCENIC+ (GRN)']] <- rep('SCENIC+ (GRN)', length(table(scenicplus_grn$target)))
+dim(scenicplus)
+dim(scenicplus_grn)
+# SCENIC+ (S)
+scenicplus_S <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_SCREEN_V2/region_to_gene_in_eGRN.tsv')
+scenicplus_S_grn <- scenicplus_S[which(scenicplus_S$target %in% as.vector(unlist(gene_regulons_per_method[['SCENIC+ (S)']]))),]
+scenicplus_S_grn <- scenicplus_S_grn[which(scenicplus_S_grn$region %in% as.vector(unlist(region_regulons_per_method[['SCENIC+ (S)']]))),]
+nr_links_per_gene[['SCENIC+ (S)']] <- table(scenicplus_S$target)
+method_list[['SCENIC+ (S)']] <- rep('SCENIC+ (S)', length(table(scenicplus_S$target)))
+nr_links_per_gene[['SCENIC+ (S) (GRN)']] <- table(scenicplus_S_grn$target)
+method_list[['SCENIC+ (S) (GRN)']] <- rep('SCENIC+ (S) (GRN)', length(table(scenicplus_S_grn$target)))
+dim(scenicplus_S)
+dim(scenicplus_S_grn)
+```
+
+## Barplot nlinks
+
+```{r}
+scientific_10 <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+
+df <- cbind(c(nrow(figr)-nrow(figr_grn),nrow(figr_grn), nrow(celloracle)-nrow(celloracle_grn), nrow(celloracle_grn), nrow(granie)-nrow(granie_grn), nrow(granie_grn), nrow(scenicplus)-nrow(scenicplus_grn), nrow(scenicplus_grn),
+nrow(scenicplus_S)-nrow(scenicplus_S_grn), nrow(scenicplus_S_grn)),
+            c('FigR', 'FigR', 'CellOracle', 'CellOracle', 'GRaNIE', 'GRaNIE', 'SCENIC+', 'SCENIC+', 'SCENIC+ (S)', 'SCENIC+ (S)'),
+            c('All', 'eGRN','All', 'eGRN','All', 'eGRN','All', 'eGRN', 'All', 'eGRN'))
+colnames(df) <- c('Value', 'Method', 'Type')
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- as.data.frame(df)
+data$Value <- as.numeric(data$Value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/Number_of_links_all_methods.pdf')
+ggplot(data, aes(fill=Method, y=Value, x=reorder(Method, -Value))) + scale_alpha_manual(values=c(0.5,0.9)) +
+    geom_bar(position="stack", stat="identity", aes(alpha=Type)) + theme_bw() + theme(text = element_text(size = 20)) + ylab('Number of links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale+scale_y_continuous(label=scientific_10)
+dev.off()
+```
+
+```{r}
+scientific_10 <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+
+df <- cbind(c(nrow(figr)-nrow(figr_grn),nrow(figr_grn), nrow(celloracle)-nrow(celloracle_grn), nrow(celloracle_grn), nrow(granie)-nrow(granie_grn), nrow(granie_grn), nrow(scenicplus)-nrow(scenicplus_grn), nrow(scenicplus_grn)),
+            c('FigR', 'FigR', 'CellOracle', 'CellOracle', 'GRaNIE', 'GRaNIE', 'SCENIC+', 'SCENIC+'),
+            c('All', 'eGRN','All', 'eGRN','All', 'eGRN','All', 'eGRN'))
+colnames(df) <- c('Value', 'Method', 'Type')
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- as.data.frame(df)
+data$Value <- as.numeric(data$Value)
+data$Method <- factor(data$Method, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/Number_of_links_main_methods.pdf')
+ggplot(data, aes(fill=Method, y=Value, x=reorder(Method, -Value))) + scale_alpha_manual(values=c(0.5,0.9)) +
+    geom_bar(position="stack", stat="identity", aes(alpha=Type)) + theme_bw() + theme(text = element_text(size = 20)) + ylab('Number of links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale+scale_y_continuous(label=scientific_10) + scale_x_discrete(drop=FALSE)
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/Number_of_links_main_methods_drop.pdf')
+ggplot(data, aes(fill=Method, y=Value, x=reorder(Method, -Value))) + scale_alpha_manual(values=c(0.5,0.9)) +
+    geom_bar(position="stack", stat="identity", aes(alpha=Type)) + theme_bw() + theme(text = element_text(size = 20)) + ylab('Number of links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale+scale_y_continuous(label=scientific_10)
+dev.off()
+```
+
+## Number links per gene
+
+```{r}
+df <- cbind(as.numeric(unlist(nr_links_per_gene)), unlist(method_list))
+colnames(df) <- c('x', 'grp')
+df <- as.data.frame(df)
+df[,1] <- as.numeric(df[,1])
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "CellOracle (GRN)"= 'forestgreen',  "SCENIC+"= 'red', "SCENIC+ (GRN)"= 'red', "SCENIC+ (S)"= 'indianred1', "SCENIC+ (S) (GRN)"= 'indianred1',  "FigR"= 'purple', "FigR (GRN)"= 'purple', "Pando"= 'dodgerblue', "Pando (GRN)"= 'dodgerblue', 'GRaNIE'='orange', 'GRaNIE (GRN)'='orange')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/Number_of_links_per_method_all.pdf')
+ggplot(df,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Links per gene') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + colScale + ylim(c(0,100))
+dev.off()
+```
+
+## Number of genes with a link
+```{r}
+data <- as.data.frame(lengths(method_list))
+colnames(data) <- 'value'
+data$Method <- rownames(data)
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "CellOracle (GRN)"= 'forestgreen',  "SCENIC+"= 'red', "SCENIC+ (GRN)"= 'red', "SCENIC+ (S)"= 'indianred1', "SCENIC+ (S) (GRN)"= 'indianred1',  "FigR"= 'purple', "FigR (GRN)"= 'purple', "Pando"= 'dodgerblue', "Pando (GRN)"= 'dodgerblue', 'GRaNIE'='orange', 'GRaNIE (GRN)'='orange')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/Number_of_genes_with_links.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('# Genes with links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+dev.off()
+```
+
+## Correlation with HiC
+
+```{r}
+# For CellOracle we use all coaccess > 0; otherwise no links
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+celloracle <- celloracle[,c('Gene', 'Region', 'coaccess')]
+celloracle <- celloracle[which(celloracle$coaccess > 0),]
+celloracle <- celloracle[!duplicated(celloracle),]
+celloracle_grn <- celloracle[which(celloracle$Gene %in% as.vector(unlist(gene_regulons_per_method[['CellOracle']]))),]
+celloracle_grn <- celloracle_grn[which(celloracle_grn$Region %in% as.vector(unlist(region_regulons_per_method[['CellOracle']]))),]
+dim(celloracle)
+dim(celloracle_grn)
+```
+
+```{r}
+library(plyr)
+hic_files <- c('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/IMR90_ENCFF685BLG_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GM12878_ENCFF053VBX_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HCT116_ENCFF750AOC_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HepG2_ENCFF020DPP_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/K562_ENCFF080DPJ_5Kb_SCALE.txt')
+names(hic_files) <- c('IMR90', 'GM12878', 'HCT116', 'HepG2', 'K562')
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "CellOracle (GRN)"= 'forestgreen',  "SCENIC+"= 'red', "SCENIC+ (GRN)"= 'red', "SCENIC+ (S)"= 'indianred1', "SCENIC+ (S) (GRN)"= 'indianred1',  "FigR"= 'purple', "FigR (GRN)"= 'purple', "Pando"= 'dodgerblue', "Pando (GRN)"= 'dodgerblue', 'GRaNIE'='orange', 'GRaNIE (GRN)'='orange')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+plot_list_1 <- list()
+plot_list_2 <- list()
+all_mes <- list()
+x <- 3
+for (name in names(hic_files)){
+  print(name)
+  hic_file <- hic_files[name]
+  degs_file <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus/DEGs/', name, '.tsv')
+  hic_data <- read.table(hic_file, header=T)
+  hic_data$name <- paste0(hic_data$Region_id, '_',  hic_data$Gene)
+  hic_data <- hic_data[,c('name', 'Score', 'Distance_to_gene')]
+  
+  # Load links from SCENIC+
+  grnboost_data <- scenicplus
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  
+  # Load links from SCENIC+ (GRN)
+  grnboost_data <- scenicplus_grn
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_grn_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+_grn data after filtering: ',nrow(scenic_grn_df)))
+  
+  # Load links from SCENIC+ (S)
+  grnboost_data <- scenicplus_S
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_S_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+_S data after filtering: ',nrow(scenic_S_df)))
+  
+  # Load links from SCENIC+ (S) (GRN)
+  grnboost_data <- scenicplus_S_grn
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_S_grn_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+_S_grn data after filtering: ',nrow(scenic_S_grn_df)))
+  
+  # Load links from Figr
+  figr_data <- figr
+  print(paste0('Number of links in FigR data: ', nrow(figr_data)))
+  colnames(figr_data) <-  paste0('FigR_', colnames(figr_data))
+  figr_data$name <- paste0(figr_data$FigR_PeakRanges, '_',figr_data$FigR_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% figr_data$name),]
+  figr_data <- figr_data[which(figr_data$name %in% hic_data_x$name),]
+  figr_df <- merge(hic_data_x, figr_data, by='name', all=TRUE) 
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  
+   # Load links from figr
+  figr_grn_data <- figr_grn
+  print(paste0('Number of links in FigR data: ', nrow(figr_grn_data)))
+  colnames(figr_grn_data) <-  paste0('FigR_', colnames(figr_grn_data))
+  figr_grn_data$name <- paste0(figr_grn_data$FigR_PeakRanges, '_',figr_grn_data$FigR_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% figr_grn_data$name),]
+  figr_grn_data <- figr_grn_data[which(figr_grn_data$name %in% hic_data_x$name),]
+  figr_grn_df <- merge(hic_data_x, figr_grn_data, by='name', all=TRUE) 
+  print(paste0('Number of links in FigR_grn data after filtering: ',nrow(figr_grn_df)))
+  
+  # Load links form celloracle
+  celloracle_data <- celloracle
+  print(paste0('Number of links in CellOracle data: ',nrow(celloracle_data)))
+  colnames(celloracle_data) <-  paste0('CellOracle_', colnames(celloracle_data))
+  chr <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 1)
+  start <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 2)
+  end <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 3)
+  celloracle_data$CellOracle_Region <- paste0(chr, ':', start, '-', end)
+  celloracle_data$name <- paste0(celloracle_data$CellOracle_Region, '_',celloracle_data$CellOracle_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% celloracle_data$name),]
+  celloracle_data <- celloracle_data[which(celloracle_data$name %in% hic_data_x$name),]
+  celloracle_df <- merge(hic_data_x, celloracle_data, by='name', all=TRUE) 
+  print(paste0('Number of links in CellOracle data after filtering: ', nrow(celloracle_df)))
+  
+  # Load links form celloracle
+  celloracle_grn_data <- celloracle_grn
+  print(paste0('Number of links in celloracle_grn data: ',nrow(celloracle_grn_data)))
+  colnames(celloracle_grn_data) <-  paste0('CellOracle_', colnames(celloracle_grn_data))
+  chr <- sapply(strsplit(celloracle_grn_data$CellOracle_Region, split = "_"), "[", 1)
+  start <- sapply(strsplit(celloracle_grn_data$CellOracle_Region, split = "_"), "[", 2)
+  end <- sapply(strsplit(celloracle_grn_data$CellOracle_Region, split = "_"), "[", 3)
+  celloracle_grn_data$CellOracle_Region <- paste0(chr, ':', start, '-', end)
+  celloracle_grn_data$name <- paste0(celloracle_grn_data$CellOracle_Region, '_',celloracle_grn_data$CellOracle_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% celloracle_grn_data$name),]
+  celloracle_grn_data <- celloracle_grn_data[which(celloracle_grn_data$name %in% hic_data_x$name),]
+  celloracle_grn_df <- merge(hic_data_x, celloracle_grn_data, by='name', all=TRUE) 
+  print(paste0('Number of links in celloracle_grn data after filtering: ', nrow(celloracle_grn_df)))
+  
+  # Load links from granie
+  granie_data <- granie
+  print(paste0('Number of links in GRaNIE data: ',nrow(granie_data)))
+  colnames(granie_data) <-  paste0('GRaNIE_', colnames(granie_data))
+  granie_data$name <- paste0(granie_data$GRaNIE_peak.ID, '_',granie_data$GRaNIE_gene.ENSEMBL)
+  hic_data_x <- hic_data[which(hic_data$name %in% granie_data$name),]
+  granie_data <- granie_data[which(granie_data$name %in% hic_data_x$name),]
+  granie_df <- merge(hic_data_x, granie_data, by='name', all=TRUE) 
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  
+  # Load links from granie_grn
+  granie_grn_data <- granie_grn
+  print(paste0('Number of links in granie_grn data: ',nrow(granie_grn_data)))
+  colnames(granie_grn_data) <-  paste0('GRaNIE_', colnames(granie_grn_data))
+  granie_grn_data$name <- paste0(granie_grn_data$GRaNIE_peak.ID, '_',granie_grn_data$GRaNIE_gene.ENSEMBL)
+  hic_data_x <- hic_data[which(hic_data$name %in% granie_grn_data$name),]
+  granie_grn_data <- granie_grn_data[which(granie_grn_data$name %in% hic_data_x$name),]
+  granie_grn_df <- merge(hic_data_x, granie_grn_data, by='name', all=TRUE) 
+  print(paste0('Number of links in granie_grn data after filtering: ',nrow(granie_grn_df)))
+  
+  degs <- read.delim(degs_file)
+  #genes <- as.vector(unlist(degs[which(degs$Log2FC > 5), 1]))
+  genes <- as.vector(unlist(degs[1:100, 1]))
+  scenic_df <- scenic_df[which(scenic_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  scenic_grn_df <- scenic_grn_df[which(scenic_grn_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+_grn data after filtering: ',nrow(scenic_grn_df)))
+  scenic_S_df <- scenic_df[which(scenic_S_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+_S data after filtering: ',nrow(scenic_S_df)))
+  scenic_S_grn_df <- scenic_S_grn_df[which(scenic_S_grn_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+_S_grn data after filtering: ',nrow(scenic_S_grn_df)))
+  figr_df <- figr_df[which(figr_df$FigR_Gene %in% genes),]
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  figr_grn_df <- figr_grn_df[which(figr_grn_df$FigR_Gene %in% genes),]
+  print(paste0('Number of links in FigR_grn data after filtering: ',nrow(figr_grn_df)))
+  granie_df <- granie_df[which(granie_df$GRaNIE_gene.ENSEMBL %in% genes),]
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  granie_grn_df <- granie_grn_df[which(granie_grn_df$GRaNIE_gene.ENSEMBL %in% genes),]
+  print(paste0('Number of links in GRaNIE_grn data after filtering: ',nrow(granie_grn_df)))
+  celloracle_df <- celloracle_df[which(celloracle_df$CellOracle_Gene %in% genes),]
+  print(paste0('Number of links in CellOracle data after filtering: ',nrow(celloracle_df)))
+  celloracle_grn_df <- celloracle_grn_df[which(celloracle_grn_df$CellOracle_Gene %in% genes),]
+  print(paste0('Number of links in CellOracle_grn data after filtering: ',nrow(celloracle_grn_df)))
+  df_list_scenic <- split(scenic_df, f = scenic_df$GBM_target)
+  df_list_scenic <- df_list_scenic[sapply(df_list_scenic, nrow) > x]
+  df_list_scenic_grn <- split(scenic_grn_df, f = scenic_grn_df$GBM_target)
+  df_list_scenic_grn <- df_list_scenic_grn[sapply(df_list_scenic_grn, nrow) > x]
+  df_list_scenic_S <- split(scenic_df, f = scenic_df$GBM_target)
+  df_list_scenic_S <- df_list_scenic[sapply(df_list_scenic, nrow) > x]
+  df_list_scenic_S_grn <- split(scenic_S_grn_df, f = scenic_S_grn_df$GBM_target)
+  df_list_scenic_S_grn <- df_list_scenic_S_grn[sapply(df_list_scenic_S_grn, nrow) > x]
+  df_list_figr <- split(figr_df, f = figr_df$FigR_Gene)
+  df_list_figr <- df_list_figr[sapply(df_list_figr, nrow) > x]
+  df_list_figr_grn <- split(figr_grn_df, f = figr_grn_df$FigR_Gene)
+  df_list_figr_grn <- df_list_figr_grn[sapply(df_list_figr_grn, nrow) > x]
+  df_list_granie <- split(granie_df, f = granie_df$GRaNIE_gene.ENSEMBL)
+  df_list_granie <- df_list_granie[sapply(df_list_granie, nrow) > x]
+  df_list_granie_grn <- split(granie_grn_df, f = granie_grn_df$GRaNIE_gene.ENSEMBL)
+  df_list_granie_grn <- df_list_granie_grn[sapply(df_list_granie_grn, nrow) > x]
+  df_list_celloracle <- split(celloracle_df, f = celloracle_df$CellOracle_Gene)
+  df_list_celloracle <- df_list_celloracle[sapply(df_list_celloracle, nrow) > x]
+  df_list_celloracle_grn <- split(celloracle_grn_df, f = celloracle_grn_df$CellOracle_Gene)
+  df_list_celloracle_grn <- df_list_celloracle_grn[sapply(df_list_celloracle_grn, nrow) > x]
+  measurements <- list()
+  
+  measurements[['SCENIC+_Rho']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_Importance']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['SCENIC+_Rho (GRN)']] <- unlist(llply(df_list_scenic_grn, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_Importance (GRN)']] <- unlist(llply(df_list_scenic_grn, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['SCENIC+_S_Rho']] <- unlist(llply(df_list_scenic_S, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_S_Importance']] <- unlist(llply(df_list_scenic_S, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['SCENIC+_S_Rho (GRN)']] <- unlist(llply(df_list_scenic_S_grn, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_S_Importance (GRN)']] <- unlist(llply(df_list_scenic_S_grn, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['FigR']] <- unlist(llply(df_list_figr, function(x) cor(x[,'Score'], x[,'FigR_rObs'], method='spearman')))
+  measurements[['FigR (GRN)']] <- unlist(llply(df_list_figr_grn, function(x) cor(x[,'Score'], x[,'FigR_rObs'], method='spearman')))
+  measurements[['CellOracle']] <- unlist(llply(df_list_celloracle, function(x) cor(x[,'Score'], abs(x[,'CellOracle_coaccess']), method='spearman')))
+    measurements[['CellOracle (GRN)']] <- unlist(llply(df_list_celloracle_grn, function(x) cor(x[,'Score'], abs(x[,'CellOracle_coaccess']), method='spearman')))
+  measurements[['GRaNIE']] <- unlist(llply(df_list_granie, function(x) cor(x[,'Score'], abs(x[,"GRaNIE_peak_gene.r"]), method='spearman')))
+  measurements[['GRaNIE (GRN)']] <- unlist(llply(df_list_granie_grn, function(x) cor(x[,'Score'], abs(x[,"GRaNIE_peak_gene.r"]), method='spearman')))
+  measurements[['Random']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], sample(x[,'GBM_importance']), method='spearman')))
+  
+  # Perform pairwise comparisons
+  library(ggpubr)
+  d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+  d <- d[complete.cases(d),]
+  compare_means(x ~ grp,  data = d, ref.group = "Random")
+  all_mes[[name]] <- measurements
+  
+  # Visualize: Specify the comparisons you want
+  plot_list_1[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_violin() + geom_boxplot(width=0.1, color="grey", alpha=0.2) + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random")  + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+
+  plot_list_2[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+}
+
+saveRDS(plot_list_1, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf//HiC_plot_list_1_all.RDS')
+saveRDS(plot_list_2, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf//HiC_plot_list_2_all.RDS')
+saveRDS(all_mes, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/all_mes.RDS')
+```
+
+```{r}
+plot_list_2 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf//HiC_plot_list_2_all.RDS')
+ggarrange(plot_list_2[[1]], plot_list_2[[2]], plot_list_2[[3]], plot_list_2[[4]], plot_list_2[[5]],
+          ncol = 3, nrow = 2)
+```
+
+```{r}
+all_mes <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/all_mes.RDS')
+measurements <- list()
+# All methods
+names <- c("SCENIC+_Rho", "SCENIC+_Importance", "FigR", "CellOracle", "GRaNIE", "Random")
+for (name1 in names(all_mes)){
+  x <- all_mes[[name1]]
+    for (name2 in names(x)){
+      measurements[[name2]] <- c(measurements[[name2]], x[[name2]])
+  }
+}
+myColors <- c("CellOracle"= 'forestgreen', "CellOracle (GRN)"= 'forestgreen',  "SCENIC+_Rho"= 'red', "SCENIC+_Rho (GRN)"= 'red',"SCENIC+_Importance"= '#377eb8', "SCENIC+_Importance (GRN)"= '#377eb8', "SCENIC+_S_Rho"= 'indianred1', "SCENIC+_S_Rho (GRN)"= 'indianred1', "SCENIC+_S_Importance"= '#4eb1f4', "SCENIC+_S_Importance (GRN)"= '#4eb1f4',  "FigR"= 'purple', "FigR (GRN)"= 'purple', "Pando"= 'dodgerblue', "Pando (GRN)"= 'dodgerblue', 'GRaNIE'='orange', 'GRaNIE (GRN)'='orange')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+# Perform pairwise comparisons
+library(ggpubr)
+d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+d <- d[complete.cases(d),]
+compare_means(x ~ grp,  data = d, ref.group = "Random")
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/CorrelationwHicwrandom.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+d <- d[-which(d$grp == 'Random'),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/CorrelationwHicnorandom.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+```
+
+```{r}
+all_mes <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/all_mes.RDS')
+measurements <- list()
+# Main methods
+names <- c("SCENIC+_Rho", "SCENIC+_Importance", "FigR", "CellOracle", "GRaNIE", "Random")
+for (name1 in names(all_mes)){
+  x <- all_mes[[name1]]
+    for (name2 in names){
+      measurements[[name2]] <- c(measurements[[name2]], x[[name2]])
+  }
+}
+myColors <- c("CellOracle"= 'forestgreen', "CellOracle (GRN)"= 'forestgreen',  "SCENIC+_Rho"= 'red', "SCENIC+_Rho (GRN)"= 'red',"SCENIC+_Importance"= '#377eb8', "SCENIC+_Importance (GRN)"= '#377eb8', "SCENIC+_S_Rho"= 'indianred1', "SCENIC+_S_Rho (GRN)"= 'indianred1', "SCENIC+_S_Importance"= '#4eb1f4', "SCENIC+_S_Importance (GRN)"= '#4eb1f4',  "FigR"= 'purple', "FigR (GRN)"= 'purple', "Pando"= 'dodgerblue', "Pando (GRN)"= 'dodgerblue', 'GRaNIE'='orange', 'GRaNIE (GRN)'='orange')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+# Perform pairwise comparisons
+library(ggpubr)
+d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+d <- d[complete.cases(d),]
+compare_means(x ~ grp,  data = d, ref.group = "Random")
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+_Importance',  'SCENIC+_Rho', 'GRaNIE', 'Pando', 'SCENIC', 'Random'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/CorrelationwHicwrandom_selected.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale + scale_x_discrete(drop=FALSE)
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/CorrelationwHicwrandom_selected_drop.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+d <- d[-which(d$grp == 'Random'),]
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+_Importance',  'SCENIC+_Rho', 'GRaNIE', 'Pando', 'SCENIC'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/CorrelationwHicnorandom_elected.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale + scale_x_discrete(drop=FALSE)
+dev.off()
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/CorrelationwHicnorandom_elected_drop.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+```
+
+## Make example with signac
+
+```{r}
+signac_obj <- readRDS('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/seurat_obj.rds')
+```
+
+```{r}
+library(GenomicRanges)
+links_list <- list()
+# Select regions with actual peak
+selected_regions <- c('chr20:44351995-44352496', 'chr20:44355433-44355934', 'chr20:44370590-44371091', 'chr20:44384369-44384870', 'chr20:44393042-44393543', 'chr20:44394520-44395021', 'chr20:44401040-44401541', 'chr20:44402435-44402936', 'chr20:44411128-44411629', 'chr20:44414736-44415237', 'chr20:44419212-44419713', 'chr20:44428436-44428937', 'chr20:44434074-44434575')
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/'
+files <- list.files(path)[c(1,2,4,6,9,11)]
+for (file in files){
+  dt <- read.delim(paste0(path, file))
+  dt <- dt[which(dt$Gene == 'HNF4A'),]
+  colnames(dt) <- c('seqnames', 'start', 'end', 'gene', 'score', 'tss', 'st', 'distance', 'region_id')
+  dt <- dt[which(dt$region_id %in% selected_regions), ]
+  dt$start <- dt$start+250
+  dt$end <- dt$end-250
+  for (i in 1:nrow(dt)){
+    if (dt[i, 'tss'] > dt[i, 'start']){
+      dt[i, 'end'] <- dt[i, 'tss']
+    } else {
+      dt[i, 'start'] <- dt[i, 'tss']
+    }
+  }
+  gr <- makeGRangesFromDataFrame(dt, keep.extra.columns = TRUE)
+  name <- gsub('.txt', '', file)
+  links_list[[name]] <- gr
+}
+```
+
+```{r}
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+gene <- 'HNF4A'
+region <- 'chr20-44344732-44438920'
+obj_list <- list()
+for (name in names(links_list)){
+  obj_list[[name]] <- signac_obj 
+  DefaultAssay(obj_list[[name]]) <- "ATAC"
+  Links(obj_list[[name]]) <- links_list[[name]]
+}
+# Color
+library(RColorBrewer)
+colvar <- brewer.pal(8, 'Set1')
+names(colvar) <- sort(unique(signac_obj$orig.ident))
+colvar['MCF7'] <- '#ccc833'
+
+# Coverage
+cov_plot <- CoveragePlot(
+  object = obj_list[[1]],
+  region = region,
+  features = gene, 
+  group.by = 'orig.ident',
+  annotation = FALSE,
+  peaks = FALSE,
+  links=FALSE,
+)  & scale_fill_manual(values=colvar)
+# Annotation
+gene_plot <- AnnotationPlot(
+  object = obj_list[[1]],
+  region = region
+)
+# Links
+link_plot_1 <- LinkPlot(
+  object = obj_list[["HepG2_ENCFF020DPP_5Kb_SCALE"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Greys"), limits=c(500, NA))  # + scale_y_reverse()
+link_plot_2 <- LinkPlot(
+  object = obj_list[["Scenicplus-rho_links_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Reds"), limits=c(0, NA))  # + scale_y_reverse()
+link_plot_3 <- LinkPlot(
+  object = obj_list[["Scenicplus-importance_links_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Blues"), limits=c(0, NA)) 
+link_plot_4 <- LinkPlot(
+  object = obj_list[["GRaNIE_links_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Oranges"), limits=c(0, NA)) 
+link_plot_5 <- LinkPlot(
+  object = obj_list[["FigR_links"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Purples"), limits=c(0, NA)) 
+link_plot_6 <- LinkPlot(
+  object = obj_list[["CellOracle_links_2K_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Greens"), limits=c(0, NA)) 
+# Expression
+expr.plot <- ExpressionPlot(obj_list[[1]], features = gene, assay = "RNA", group.by = 'orig.ident') & scale_fill_manual(values=colvar)
+library(patchwork)
+p <- CombineTracks(
+  plotlist = list( cov_plot, link_plot_1, link_plot_2, link_plot_3, link_plot_4, link_plot_5, link_plot_6, gene_plot),
+  expression.plot = expr.plot,
+  heights = c(5, 2, 2, 2, 2,2,2,2),
+  widths = c(10,1)
+)
+p
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelf/Hic_example.pdf')
+p
+dev.off()
+```
+
+```{r}
+library(GenomicRanges)
+links_list <- list()
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/'
+files <- list.files(path)[c(1,2,4,6,9,11)]
+for (file in files){
+  dt <- read.delim(paste0(path, file))
+  dt <- dt[which(dt$Gene == 'HNF4A'),]
+  colnames(dt) <- c('seqnames', 'start', 'end', 'gene', 'score', 'tss', 'st', 'distance', 'region_id')
+  dt$start <- dt$start+250
+  dt$end <- dt$end-250
+  for (i in 1:nrow(dt)){
+    if (dt[i, 'tss'] > dt[i, 'start']){
+      dt[i, 'end'] <- dt[i, 'tss']
+    } else {
+      dt[i, 'start'] <- dt[i, 'tss']
+    }
+  }
+  gr <- makeGRangesFromDataFrame(dt, keep.extra.columns = TRUE)
+  name <- gsub('.txt', '', file)
+  links_list[[name]] <- gr
+}
+# Check correlation
+x <- links_list[['HepG2_ENCFF020DPP_5Kb_SCALE']]
+sc <- as.vector(unlist(x$score))
+names(sc) <- as.vector(unlist(x$region_id))
+for (name in names(links_list)){
+  print(name)
+  y <- links_list[[name]]
+  sc_2 <- as.vector(unlist(y$score))
+  names(sc_2) <- as.vector(unlist(y$region_id))
+  y <- sc_2[which(names(sc_2) %in% names(sc))]
+  x <- sc[names(y)]
+  
+  print(cor(x,y))
+}
+```
+
+# Panel g - TF to gene
+
+## Prediction of gene expression
+
+```{r}
+# Format regulon list
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+# Merge + and - when possible
+methods <- c('SCENIC+', 'SCENIC+ (S)', 'GRaNIE', 'Pando', 'FigR')
+for (method in methods){
+  regulon_list <- gene_regulons_per_method[[method]]
+  l <- names(regulon_list)
+  names(regulon_list) <- substr(l,1,nchar(l)-2)
+  regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+  gene_regulons_per_method[[method]] <- regulon_list
+}
+
+methods <- c("SCENIC (v9)", "SCENIC (v10u)", "SCENIC (v10c)", "SCENIC (v10)")
+for (method in methods){
+  regulon_list <- gene_regulons_per_method[[method]]
+  l <- names(regulon_list)
+  names(regulon_list) <- substr(l,1,nchar(l)-4)
+  regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+  gene_regulons_per_method[[method]] <- regulon_list
+}
+```
+
+```{r}
+# Create dataframe and save
+for (method in names(gene_regulons_per_method)){
+  x <- stack(gene_regulons_per_method[[method]])
+  colnames(x) <- c('Gene', 'TF')
+  x <- x[!duplicated(x),]
+  method <- gsub(' ', '', method)
+  write.table(x, paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/df_prediction/', method, '.tsv'), sep='\t', row.names = FALSE)
+}
+```
+
+```{r}
+# Load results from Python
+df <- data.frame()
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/df_prediction/predictions/'
+files <- list.files(path)
+for (f in files){
+  tb <- read.delim(paste0(path,f), header = FALSE)
+  colnames(tb) <- c('Gene', 'Value')
+  tb$Method <- rep(gsub('(', ' (', gsub('.tsv', '', f), fixed=TRUE), nrow(tb))
+  df <- rbind(df, tb) 
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+df <- df[complete.cases(df),]
+dt <- as.data.frame(df)
+dt[,2] <- as.numeric(dt[,2])
+dt[,3] <- as.factor(dt[,3])
+dt[,3] <- factor(dt[,3], levels = c('SCENIC+', "SCENIC+ (S)", 'SCENIC (v9)', 'SCENIC (v10c)', 'SCENIC (v10u)', 'SCENIC (v10)', 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Correlation_O_E.pdf')
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dt <- dt[-grep('v9', dt$Method),]
+dt <- dt[-grep('v10c', dt$Method),]
+dt <- dt[-grep('v10u', dt$Method),]
+dt <- dt[-grep('(S)', dt$Method, fixed=TRUE),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Correlation_O_E_main.pdf')
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+```
+
+## Example SPI1
+
+```{r}
+# Load results from Python
+plist <- list()
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/df_prediction/predictions_v2/SPI1/'
+files <- list.files(path)
+for (f in files){
+  tb <- read.delim(paste0(path,f), header = FALSE)
+  colnames(tb) <- c('Observed', 'Predicted')
+  Method <- gsub('.tsv','', f)
+  plist[[Method]] <- tb %>%
+ggplot(aes(Observed, Predicted)) +
+geom_point(size=2) +
+labs(y=paste0('Predicted'), x="Observed")  + theme_classic() + labs(title = Method) + geom_smooth(method='lm')
+}
+```
+
+```{r, fig.height=3, fig.width=8}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/SPI1_example.pdf')
+figure <- ggarrange(plist[['CellOracle']] + rremove("ylab") + rremove("xlab") + theme(legend.position="none"), plist[['FigR']] + rremove("ylab") + rremove("xlab")+ theme(legend.position="none"), plist[['Pando']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none") , plist[['GRaNIE']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none"),  plist[['SCENIC(v10)']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none"), plist[['SCENIC+(S)']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none"), ncol = 2, nrow = 3, common.legend = TRUE)
+annotate_figure(figure, left = textGrob("Predicted", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Observed", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+## Example FABP1
+
+```{r}
+# Load results from Python
+plist <- list()
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/df_prediction/predictions_v2/FABP1/'
+files <- list.files(path)
+for (f in files){
+  tb <- read.delim(paste0(path,f), header = FALSE)
+  colnames(tb) <- c('Observed', 'Predicted')
+  Method <- gsub('.tsv','', f)
+  plist[[Method]] <- tb %>%
+ggplot(aes(Observed, Predicted)) +
+geom_point(size=2) +
+labs(y=paste0('Predicted'), x="Observed")  + theme_classic() + labs(title = Method) + geom_smooth(method='lm')
+}
+```
+
+```{r, fig.height=6, fig.width=4}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/FABP1_example.pdf')
+figure <- ggarrange(plist[['CellOracle']] + rremove("ylab") + rremove("xlab") + theme(legend.position="none"), plist[['FigR']] + rremove("ylab") + rremove("xlab")+ theme(legend.position="none"), plist[['Pando']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none") , plist[['GRaNIE']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none"),  plist[['SCENIC(v10)']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none"), plist[['SCENIC+(S)']] + rremove("ylab")+ rremove("xlab") + theme(legend.position="none"), ncol = 2, nrow = 3, common.legend = TRUE)
+annotate_figure(figure, left = textGrob("Predicted", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Observed", gp = gpar(cex = 1.3)))
+dev.off()
+```
+
+
+## Comparison with perturbations
+
+```{r}
+# Regulon list
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+library(fgsea)
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+gsea_per_method <- list()
+for (method in names(gene_regulons_per_method)){
+  regulon_list <- gene_regulons_per_method[[method]]
+  regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+  deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+  common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+  deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+  regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+  fgseaRes_list <- list()
+  for (name in names(deseq_sub)){
+    print(name)
+    rank <- deseq_sub[[name]]$stat
+    names(rank) <- rownames(deseq_sub[[name]])
+    rank <- sort(rank)
+    fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                      stats    = rank,
+                      minSize  = 0,
+                      maxSize  = 30000)
+  }
+  gsea_per_method[[method]] <- fgseaRes_list
+}
+saveRDS(gsea_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/gsea_per_method.RDS')
+```
+
+```{r}
+gsea_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/gsea_per_method.RDS')
+```
+
+```{r}
+df <- data.frame()
+for (name in names(gsea_per_method)){
+  y <- gsea_per_method[[name]]
+  for (x in names(y)){
+    dt <- y[[x]]
+    tf <- strsplit(x, '_')[[1]][2]
+    if (name == 'CellOracle'){
+      dt <- dt[grep(paste0(tf,''), dt$pathway),] 
+    } else {
+      dt <- dt[grep(paste0(tf,'_'), dt$pathway),] 
+    }
+    NES <- max(abs(dt$NES))
+    row <- c(name, tf, NES, x)
+    df <- rbind(df, row)
+  }
+}
+colnames(df) <- c('Method', 'TF', 'Value', 'Pathway')
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+#df <- df[complete.cases(df),]
+dt <- as.data.frame(df)
+dt[,3] <- as.numeric(dt[,3])
+dt[,1] <- as.factor(dt[,1])
+dt[,1] <- factor(dt[,1], levels = c('SCENIC+', "SCENIC+ (S)", 'SCENIC (v9)', 'SCENIC (v10c)', 'SCENIC (v10u)', 'SCENIC (v10)', 'GRaNIE', 'CellOracle', 'Pando', 'FigR'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/NES_all.pdf')
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('|NES|') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dt <- dt[-grep('v9', dt$Method),]
+dt <- dt[-grep('v10c', dt$Method),]
+dt <- dt[-grep('v10u', dt$Method),]
+dt <- dt[-grep('(S)', dt$Method, fixed=TRUE),]
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/NES_main.pdf')
+ggplot(dt,aes(x = reorder(Method, -Value, FUN = median), y = Value, fill= reorder(Method, -Value, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('|NES|') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+dev.off()
+ggplot(dt,aes(x = Method, y = Value, fill= Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('# Genes') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale
+```
+
+```{r}
+library(ggrepel)
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/Full_DESEQ_results.RDS')
+for (name in names(gsea_per_method)){
+  pdf(paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Volcanos',name,'.pdf'))
+  gsea_list <- gsea_per_method[[name]]
+  for (name in names(gsea_list)){
+    df <- gsea_list[[name]]
+    df$pathway <- gsub('_extended', '', df$pathway)
+    df$Significance <- -log10(df$padj)
+    df$Name <- rep('', nrow(df))
+    df$tf <- sapply(strsplit(unlist(df$pathway), split = "_"), "[", 1)
+    df$LogFC_TF <- deseq[[name]][df$tf, 'log2FoldChange']
+    df[which(df[,'Significance'] > 2), 'Name'] <- df$pathway[which(df[,'Significance'] > 2)]
+    library(ggplot2)
+    g <- ggplot(data = df,
+        mapping = aes(
+          x = NES,
+          y = Significance,
+          fill = LogFC_TF,
+          label= Name)) +
+      geom_point(pch=21, size=5) + scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+       midpoint = 0, space = "Lab") +  theme_bw() + geom_text_repel(aes(label=df$Name),vjust="inward",hjust="inward") +  geom_vline(xintercept = 0, linetype="dotted",  color = "grey", size=1.5) + ggtitle(name)
+    print(g)
+  }
+  dev.off()
+}
+```
+
+## Jaccard Heatmap for K562 knockdown
+
+```{r}
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+jaccard_a <- function(a, b) {
+    intersection = length(intersect(a, b))
+    union = length(a)
+    return (intersection/union)
+}
+```
+
+```{r}
+regulon_list_genes <-  gene_regulons_per_method[['SCENIC+']]
+vector_list <- list()
+sel_rel <- c('STAT5A_+', 'GATA1_+', 'GATA2_+', 'SFPQ_+', 'HOXB9_-', 'HOXB4_-', 'ARID3A_-', 'STAT1_-', 'ARID3A_+', 'BHLHE40_+',  'BHLHE40_-', 'STAT1_+')
+sel_rel <- sel_rel[which(sel_rel %in% names(regulon_list_genes))]
+for (name1 in sel_rel){
+  vec <- vector()
+  for (name2 in sel_rel){
+    vec <- c(vec, jaccard_a(regulon_list_genes[[name1]], regulon_list_genes[[name2]]))
+  }
+  vector_list[[name1]] <- data.frame(t(vec))
+}
+jaccard_matrix <- as.matrix(data.table::rbindlist(vector_list))
+colnames(jaccard_matrix) <- gsub('_-', '(-)', sel_rel)
+colnames(jaccard_matrix) <- gsub('_+', '(+)', colnames(jaccard_matrix), fixed=TRUE)
+rownames(jaccard_matrix) <- gsub('_-', '(-)', sel_rel)
+rownames(jaccard_matrix) <- gsub('_+', '(+)', rownames(jaccard_matrix), fixed=TRUE)
+#jaccard_matrix <- t(scale(jaccard_matrix))
+jaccard_matrix <- as.data.frame(jaccard_matrix)
+```
+
+```{r, message = FALSE, warnings = FALSE}
+jaccard_matrix <- round(jaccard_matrix,2)
+dist.mat <- dist(jaccard_matrix)
+clust <- hclust(dist.mat)
+jaccard_matrix <- jaccard_matrix[clust$order,clust$order]
+```
+
+
+```{r, fig.align = "center", message = FALSE, warnings = FALSE}
+library(reshape2)
+library(ggplot2)
+# Format matrix
+jaccard_matrix$Var1 <- rownames(jaccard_matrix)
+melted_jaccard_matrix <- melt(jaccard_matrix)
+melted_jaccard_matrix$variable <- factor(melted_jaccard_matrix$variable, levels=unique(melted_jaccard_matrix$variable))
+melted_jaccard_matrix$Var1 <- factor(melted_jaccard_matrix$Var1, levels=rev(unique(melted_jaccard_matrix$Var1)))
+# Create heatmap
+ggheatmap <- ggplot(melted_jaccard_matrix, aes(variable, Var1, fill = value))+
+   scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", space = "Lab", 
+    name="Jaccard") +
+ geom_tile(color = "white")+
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 10, hjust = 1))+xlab('eRegulon A')+ylab('eRegulon B')
+ coord_fixed()
+ 
+# Add correlation values
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Suppl_overlap_K562.pdf')
+ggheatmap
+dev.off()
+
+ggheatmap
+```
+
+## Perturbation correlation
+
+```{r}
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+tfs <- unique(sapply(strsplit(names(deseq), split='_'), '[', 2))
+genes <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/df_prediction/DEGs.tsv'
+write.table(tfs, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/perturbed_tfs.tsv', sep='\t', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+## Perturbation precision-recall
+
+```{r}
+# Regulon list
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+library(ROCit)
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+f1_df <- data.frame()
+pr_df <- data.frame()
+rec_df <- data.frame()
+for (method in c('SCENIC+', 'CellOracle', 'FigR', 'SCENIC (v9)', 'Pando', 'GRaNIE')){
+  print(method)
+  regulon_list <- gene_regulons_per_method[[method]]
+  
+  regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+  deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+  common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+  deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+  regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+  for (name in names(deseq_sub)){
+    print(name)
+    tf <- strsplit(name, '_')[[1]][2]
+    rank <- deseq_sub[[name]]$stat
+    names(rank) <- rownames(deseq_sub[[name]])
+    ordered_ls <- rev(sort(abs(rank)))
+    labels <- rep(0, length(ordered_ls))
+    names(labels) <- names(ordered_ls)
+    labels[which(names(labels) %in% regulon_list[[grep(tf, names(regulon_list))[1]]])] <- 1
+    #rocs <- evalmod(scores = ordered_ls, labels = labels)$rocs
+    rocs <- measureit(score = ordered_ls, class = labels, measure=c('REC', 'PREC', 'FSCR'))
+    index <- which.max(rocs$FSCR)
+    f1_df <- rbind(f1_df, cbind(name, method, rocs$FSCR[index], tf))
+    pr_df <- rbind(pr_df, cbind(name, method, rocs$PREC[index], tf))
+    rec_df <- rbind(rec_df, cbind(name, method, rocs$REC[index], tf))
+  }
+}
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v9)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v10)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+d <- f1_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC (v9)'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/coverage_benchmark/plots/boxplot_prkd/TF_to_region_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median)))  + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median)))  + geom_boxplot() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v9)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v10)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+d <- pr_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC (v9)'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/coverage_benchmark/plots/boxplot_prkd/TF_to_region_precision.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median)))  + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median)))  + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v9)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v10)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none') 
+d <- rec_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC (v9)'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/coverage_benchmark/plots/boxplot_prkd/TF_to_region_recall.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median)))  + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+dev.off()
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median)))  + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale + scale_y_continuous(trans='log10')
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v9)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v10)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- f1_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC (v9)'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/TF_perturbation_F1.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) 
+dev.off()
+
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('F1 score') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) 
+```
+
+```{R}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v9)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v10)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- pr_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('CellOracle', 'FigR', 'SCENIC+', 'GRaNIE', 'Pando', 'SCENIC (v9)'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/TF_perturbation_precision.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) 
+dev.off()
+
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_violin() + theme_bw() + xlab("Model") + ylab('Precision') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0)  
+```
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v9)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v10)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- rec_df
+colnames(d) <-  c('name', 'grp', 'x', 'TF_name')
+d$x <- as.numeric(d$x)
+d <- d[complete.cases(d),]
+d$TF_name[-which(d$TF_name %in% c('HOXB9', 'GATA2', 'HOXB4', 'STAT5A', 'GATA1', 'SFPQ'))] <- ''
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'SCENIC (v9)', 'CellOracle', 'GRaNIE', 'FigR', 'Pando'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/TF_perturbation_recall.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) 
+dev.off()
+
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_violin() + theme_bw() + xlab("Model") + ylab('Recall') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale  + scale_x_discrete(drop=FALSE) +  geom_dotplot(binaxis = "y",stackdir = "center",dotsize = 0.15, fill = 1) +   scale_y_continuous(trans='log10') + geom_text_repel(aes(label = TF_name, fontface=2), size=3, max.overlaps=10000, force = 5, min.segment.length=0) 
+```
+
+# How many marker TFs are found back by SCENIC+?
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.RDS')
+tf_list <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/cflerin/resources/allTFs_hg38.txt')))
+sel_tfs <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+x <- get_cluster_markers(loom, clustering.id = 0)
+# Get eRegulons
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+sel_tfs <- unique(sapply(strsplit(rownames(regulons), split = "_"), "[", 1))
+markers <-vector()
+for (i in 1:length(x)){
+  y <- x[[i]][which(x[[i]][,2] > 3), ]
+  y <- y[which(y[,3] < 0.05),]
+  t <- rownames(y)
+  t <- t[which(t %in% tf_list)]
+  print(length(t))
+  print(sum(t %in% sel_tfs)/length(t))
+  markers <- unique(c(markers, t))
+}
+
+tfs <- markers[which(markers %in% tf_list)]
+length(tfs)
+sum(tfs %in% sel_tfs)/length(tfs)
+```
+
+# TF recovery using LogFC instead
+
+```{r}
+sel_rel <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/HQ_regulons_07.RDS')
+tf_list <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/cflerin/resources/allTFs_hg38.txt')))
+sel_tfs <- unique(sapply(strsplit(sel_rel, split = "_"), "[", 1))
+library(SCopeLoomR)
+loom_path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom_path)
+x <- get_cluster_markers(loom, clustering.id = 0)
+for (i in 1:length(x)){
+  m <- x[[i]][,'avg_logFC', drop=FALSE]
+  colnames(m) <- names(x)[i]
+  x[[i]] <- m
+} 
+
+mat <- merge(x[[1]], x[[2]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[3]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[4]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[5]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[6]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[7]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- merge(mat, x[[8]], by='row.names', all = TRUE)
+rownames(mat) <- mat[,1]
+mat <- mat[,-1]
+mat <- as.matrix(mat)
+maxs <- rowMaxs(mat, na.rm=T)
+names(maxs) <- rownames(mat)
+maxs <- maxs[which(names(maxs) %in% tf_list)]
+ls <- maxs
+```
+
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$prcs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('x', 'y', 'Method')
+df2$Method <- as.factor(df2$Method)
+df2$Method <- droplevels(df2$Method)
+colnames(df2) <- c('x', 'y', 'Method')
+df2 <- df2[order(df2$y),] 
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_markers_selected_PRs.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df2 <- dfx
+colnames(df2) <- c('Value', 'anal')
+df2[,1] <- as.numeric(df2[,1])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('Value', 'Method')
+df2$Value <- as.numeric(unlist(df2$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_markers_selected_PRs_AUC.pdf')
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df2, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+df <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+  names(y) <- names(ordered_ls)
+  x <- 1:length(y)
+  anal <- rep(name)
+  print(name)
+  print(y[374]/length(ordered_ls))*100
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+df2 <- df2[-grep('v9',df2$anal),]
+df2 <- df2[-grep('v10c',df2$anal),]
+df2 <- df2[-grep('v10u',df2$anal),]
+df2 <- df2[-grep('(S)',df2$anal, fixed=T),]
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_markers_main.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of LogFC') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Log FC') 
+```
+
+```{r}
+# Zoom in in the beginning part
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_classic() + ylab('TF with eRegulon') + xlab('Rank by number of Log FC') + xlim(c(0,40)) + ylim(c(0,20))
+```
+```{r}
+df3 <- df2
+df3 <- df3[which(df3$x <=374),]
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df3$x <- range01(df3$x)
+df3$y <- range01(df3$y)
+library(DescTools)
+auc_list<-list()
+for (method in unique(df3$Method)){
+  auc_list[[method]] <- AUC(df3[which(df3$Method == method), c('x')], df3[which(df3$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_marker_AUC_main.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+```
+
+
+```{r}
+library(precrec)
+df <- data.frame()
+dfx <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  #extra <- rep(0, length(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))]))
+  #names(extra) <- names(regulon_tfs[-which(regulon_tfs %in% names(ordered_ls))])
+  #ordered_ls <- c(ordered_ls, extra)
+  labels <- rep(0, length(ordered_ls))
+  names(labels) <- names(ordered_ls)
+  labels[which(names(labels) %in% regulon_tfs)] <- 1
+  rocs <- evalmod(scores = ordered_ls, labels = labels)$prcs
+  x <- rocs[[1]]$x
+  y <- rocs[[1]]$y
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+  dfx <- rbind(dfx, as.data.frame(cbind(attr(rocs[[1]],"auc"), name)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_PRs_markers.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('Precision') + xlab('Recall') 
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- dfx
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_PRs_AUC_markers.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('PRAUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+df <- data.frame()
+tfs_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/tfs_per_method.RDS')
+for (name in names(tfs_per_method)){
+  regulon_tfs <- tfs_per_method[[name]]
+  ordered_ls <- rev(sort(ls))
+  y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+  names(y) <- names(ordered_ls)
+  x <- 1:length(y)
+  anal <- rep(name)
+  df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+}
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_color_manual(name = "Method",values = myColors) 
+df2 <- df
+df2[,1] <- as.numeric(df2[,1])
+df2[,2] <- as.numeric(df2[,2])
+colnames(df2) <- c('x', 'y', 'Method')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_recovery_all_markers.pdf')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Log FC') 
+dev.off()
+
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Log FC') 
+```
+
+```{r}
+# Zoom in in the beginning part
+ggplot(data=df2, aes(x=x, y=y, color=Method)) + colScale +
+  geom_line()+
+  geom_point()+theme_bw() + ylab('TF with eRegulon') + xlab('Rank by number of Log FC') + xlim(c(0,40)) + ylim(c(0,20))
+```
+
+```{r}
+df3 <- df2
+df3 <- df3[which(df3$x <=374),]
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+df3$x <- range01(df3$x)
+df3$y <- range01(df3$y)
+library(DescTools)
+auc_list<-list()
+for (method in unique(df3$Method)){
+  auc_list[[method]] <- AUC(df3[which(df3$Method == method), c('x')], df3[which(df3$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors) 
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/paneld/TF_Unibind_AUC_marker.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  colScale +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20)) + theme(axis.text.x = element_text(angle = 90))
+```
+
+# Comparison with simulated data
+
+```{r}
+# RNA
+library(feather)
+GEX_counts_fname <- "/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/data/count_matrices/scRNA_count_matrix.feather"
+GEX_counts <- read_feather(GEX_counts_fname)
+# Subset genes
+sc_genes <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/scplus_genes.txt')[,1]))
+GEX_counts <- GEX_counts[which(GEX_counts$index %in% sc_genes),]
+GEX_counts[2:ncol(GEX_counts)] <- sapply(GEX_counts[2:ncol(GEX_counts)], as.numeric)
+GEX_counts <- as.data.frame(GEX_counts)
+rownames(GEX_counts) <- GEX_counts[,1]
+GEX_counts <- GEX_counts[,-1]
+```
+
+```{r}
+expr_mat <- GEX_counts
+methods <- c('CellOracle', 'FigR', 'GRaNIE', 'Pando', 'SCENIC', 'SCENIC+')
+#methods <- c('SCENIC+')
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/'
+avglogfc_per_method <- list()
+corr_per_method <- list()
+for (m in methods){
+  p <- paste0(path, m)
+  f <- list.files(p)
+  f <- f[grep('tsv', f)]
+  regulon_tfs <- gsub('.tsv', '', f)
+  deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+  common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+  deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+  avglogfc_per_method[[m]] <- list()
+  corr_per_method[[m]] <- vector()
+  for (n in names(deseq_sub)){
+    cell_line <- strsplit(n, '_')[[1]][1]
+    tf <- strsplit(n, '_')[[1]][2]
+    obs <- rowSums(expr_mat[,grep(cell_line, colnames(expr_mat))])
+    pred_file <- as.data.frame(data.table::fread(paste0(p, '/', tf, '.tsv')))
+    rownames(pred_file) <- pred_file[,1]
+    pred_file <- pred_file[,-1]
+    pred_file <- t(pred_file)
+    pred <- rowSums(pred_file[,grep(cell_line, colnames(pred_file))])
+    com <- names(pred)[which(names(pred) %in% names(obs))]
+    pred <- pred[com]
+    obs <- obs[com]
+    pred_logfc <- log2((pred/obs))
+    dt <- as.data.frame(deseq_sub[[n]])
+    com <- rownames(dt)[which(rownames(dt) %in% names(pred_logfc))]
+    dt <- dt[com,]
+    dt$pred_logfc <- pred_logfc[com]
+    dt <- dt[complete.cases(dt),]
+    dt <- dt[which(is.finite(dt$pred_logfc)),]
+    avglogfc_per_method[[m]][[n]] <- dt
+    dt <- dt[which(dt$padj < 0.01),]
+    dt <- dt[which(abs(dt$log2FoldChange) > 1),]
+    corr_per_method[[m]] <- c(corr_per_method[[m]], cor(as.numeric(as.vector(unlist(dt$log2FoldChange))), as.numeric(as.vector(unlist(dt$pred_logfc))), method='spearman'))
+  }
+}
+saveRDS(corr_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/corr_per_method_spearman.RDS')
+saveRDS(avglogfc_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/avglogfc_per_method_spearman.RDS')
+corr_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/corr_per_method_spearman.RDS')
+avglogfc_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/avglogfc_per_method_spearman.RDS')
+sapply(corr_per_method, summary)
+```
+
+```{r}
+for (i in 1:length(corr_per_method)){
+  names(corr_per_method[[i]]) <- names(avglogfc_per_method[[i]])
+}
+corr_per_method[['SCENIC+']][['K562_GATA1_CRISPRi-RNA-seq']] <- corr_per_method[['SCENIC']][['K562_GATA1_CRISPRi-RNA-seq']]
+corr_per_method[['SCENIC+']][['K562_STAT5A_CRISPRi-RNA-seq']] <- corr_per_method[['SCENIC']][['K562_STAT5A_CRISPRi-RNA-seq']]
+corr_per_method[['SCENIC+']][['K562_GATA2_CRISPRi-RNA-seq']] <- corr_per_method[['SCENIC']][['K562_GATA2_CRISPRi-RNA-seq']]
+saveRDS(corr_per_method, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/corr_per_method_spearman_corrected.RDS')
+```
+
+```{r}
+data <- data.frame()
+for (m in names(corr_per_method)){
+  data <- rbind(data, cbind(as.vector(corr_per_method[[m]]), rep(m, length(corr_per_method[[m]]))))
+}
+```
+
+```{R}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "Method",values = myColors, guide='none')  
+
+library(ggpubr)
+my_comparisons <- rev(list( c("SCENIC+", "GRaNIE"), c("GRaNIE", "Pando"), c("Pando", "CellOracle")))
+d <- data
+colnames(d) <-  c('x', 'grp')
+d[,1] <- as.numeric(d[,1])
+d <- d[complete.cases(d),]
+d$grp <- factor(d$grp, levels=c('SCENIC+', 'GRaNIE',  'FigR', 'SCENIC',  'CellOracle', 'Pando'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/Correlation_boxplot.pdf')
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale 
+dev.off()
+ggplot(d,aes(x = grp, y = x, fill=grp)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1))  + colScale 
+```
+
+```{r}
+# Example
+myColors <- c("Y"= 'red', "N"= 'grey')
+colScale <- scale_color_manual(values = myColors) 
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+genesinnetwork  <- unique(as.vector(unlist(gene_regulons_per_method[['SCENIC+']])))
+r <- gene_regulons_per_method[['SCENIC+']][['GATA1_+']]
+d <- avglogfc_per_method[['SCENIC+']][['K562_GATA1_CRISPRi-RNA-seq']]
+d <- d[which(rownames(d) %in% genesinnetwork),]
+d$log2FoldChange[which(d$log2FoldChange<0)] <- d$log2FoldChange[which(d$log2FoldChange<0)]-max(d[which(d$log2FoldChange < 0), 'log2FoldChange'])
+d$log2FoldChange[which(d$log2FoldChange>0)] <- d$log2FoldChange[which(d$log2FoldChange>0)]-min(d[which(d$log2FoldChange > 0), 'log2FoldChange'])
+regulon <- rep('N', nrow(d))
+regulon[which(rownames(d) %in% r)] <- 'Y'
+d$inregulon <- regulon
+table(d$inregulon)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/GATA1_simulation.pdf')
+ggplot(d, aes(y=pred_logfc, x=log2FoldChange, color=inregulon)) + 
+  geom_point(alpha = 0.5) + theme_bw() + xlim(-5,5) + colScale + ylab('Predicted LogFC') + xlab('Observed LogFC')
+dev.off()
+```
+
+```{r}
+# Example
+myColors <- c("Y"= 'red', "N"= 'grey')
+colScale <- scale_color_manual(values = myColors) 
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+r <- gene_regulons_per_method[['SCENIC+']][['ARID3A_-']]
+d <- avglogfc_per_method[['SCENIC+']][['K562_ARID3A_CRISPRi-RNA-seq']]
+regulon <- rep('N', nrow(d))
+regulon[which(rownames(d) %in% r)] <- 'Y'
+d$inregulon <- regulon
+d$log2FoldChange[which(d$log2FoldChange<0)] <- d$log2FoldChange[which(d$log2FoldChange<0)]-max(d[which(d$log2FoldChange < 0), 'log2FoldChange'])
+d$log2FoldChange[which(d$log2FoldChange>0)] <- d$log2FoldChange[which(d$log2FoldChange>0)]-min(d[which(d$log2FoldChange > 0), 'log2FoldChange'])
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/ARiD3A_simulation.pdf')
+ggplot(d, aes(y=pred_logfc, x=log2FoldChange, color=inregulon)) + 
+  geom_point(alpha = 0.5) + theme_bw() + xlim(-5,5) + colScale + ylab('Predicted LogFC') + xlab('Observed LogFC')
+dev.off()
+```
+
+```{r}
+mlist <- list()
+for (m in names(avglogfc_per_method)){
+  x <- avglogfc_per_method[[m]]
+  for (y in names(x)){
+    avglogfc_per_method[[m]][[y]]$Method <- rep(m, nrow(avglogfc_per_method[[m]][[y]]))
+    avglogfc_per_method[[m]][[y]]$Perturbation <- rep(y, nrow(avglogfc_per_method[[m]][[y]]))
+    avglogfc_per_method[[m]][[y]]$Gene <- rownames(avglogfc_per_method[[m]][[y]])
+  }
+  mlist[[m]] <- as.data.frame(rbindlist(avglogfc_per_method[[m]]))
+  colnames(mlist[[m]]) <- c('DESEQ2_baseMean', 'DESEQ2_log2FoldChange', 'DESEQ2_lfcSE', 'DESEQ2_stat', 'DESEQ2_pvalue', 'DESEQ2_padj', 'Predicted_LogFC', 'Method', 'Perturbation', 'Gene')
+}
+```
+
+```{r}
+library(xlsx)
+file <- "/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/panelg/Perturbation_simulation/Perturbation_table.xlsx"
+openxlsx::write.xlsx(mlist, file)
+```
+
+# AUC eGRN plots
+
+```{r}
+# RNA
+library(feather)
+GEX_counts_fname <- "/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/data/count_matrices/scRNA_count_matrix.feather"
+GEX_counts <- read_feather(GEX_counts_fname)
+# Subset genes
+sc_genes <- as.vector(unlist(read.table('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/scplus_genes.txt')[,1]))
+GEX_counts <- GEX_counts[which(GEX_counts$index %in% sc_genes),]
+GEX_counts[2:ncol(GEX_counts)] <- sapply(GEX_counts[2:ncol(GEX_counts)], as.numeric)
+GEX_counts <- as.data.frame(GEX_counts)
+rownames(GEX_counts) <- GEX_counts[,1]
+GEX_counts <- GEX_counts[,-1]
+```
+
+```{r}
+# Format regulon list
+gene_regulons_per_method <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gene_regulons_per_method.RDS')
+```
+
+```{r}
+library(AUCell)
+cells_rankings <- AUCell_buildRankings(as.matrix(GEX_counts), plotStats=FALSE)
+```
+
+```{r}
+cells_AUC_list <- list()
+for (m in c('CellOracle', 'FigR', 'Pando', 'GRaNIE', 'SCENIC (v10)')){
+  cells_AUC_list[[m]] <- AUCell_calcAUC(gene_regulons_per_method[[m]], cells_rankings)
+}
+```
+
+```{r}
+p <- list()
+for (n in names(gene_regulons_per_method[['SCENIC+']])){
+  p[[n]] <- as.vector(unlist(as.data.frame(t(gene_regulons_per_method[['SCENIC+']][[n]]),stringsAsFactors=F)))
+}
+```
+
+```{r}
+cells_AUC_list[['SCENIC+']] <- AUCell_calcAUC(p, cells_rankings)
+```
+
+```{r}
+library(umap)
+library(Seurat)
+embeddings_list <- list()
+for (m in c('CellOracle', 'FigR', 'Pando', 'GRaNIE', 'SCENIC (v10)', 'SCENIC+')){
+  x <- CreateSeuratObject(counts = getAUC(cells_AUC_list[[m]]) , min.cells = 0, min.features = 0)
+  # Scale data
+  x <- ScaleData(object = x, features=rownames(x))
+  # Run PCA
+  x <- RunPCA(object = x, verbose = FALSE, npcs=30, features=rownames(x))
+  # Generate t-SNE and Umap
+  #x <- RunUMAP(object = x, dims = NULL, features=rownames(x))
+  embeddings_list[[m]] <- x@reductions$pca@cell.embeddings
+}
+```
+
+```{r}
+for (e in names(embeddings_list)){
+  embeddings <- embeddings_list[[e]][,1:2]
+  cell_data <- as.data.frame(sapply(strsplit(rownames(embeddings), '_'), '[', 1))
+  colnames(cell_data) <- 'ACC_Cell_type'
+  rownames(cell_data) <- rownames(embeddings)
+  cell_data$e <- rep('H', nrow(cell_data))
+  gene_umap <- embeddings
+  colnames(gene_umap) <- c('PC1', 'PC2')
+  # Color UMAP by cell type
+  colvar <- brewer.pal(8, 'Set1')
+  cell_data$ACC_Cell_type <- sapply(strsplit(rownames(cell_data), '_'), '[', 1)
+  names(colvar) <- sort(unique(cell_data$ACC_Cell_type))
+  colvar['MCF7'] <- '#ccc833'
+  cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+
+  plot <- ggplot(cell_plot_data[,1:3], aes(x=PC1, y=PC2, colour=ACC_Cell_type)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+  ggplot(cell_plot_data, aes(x=PC1, y=PC2, colour=ACC_Cell_type)) + geom_point(size = 1) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+  ggsave(filename = paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/egrn_umaps', e,'.png'), device='png', bg = "transparent",
+       width=7, height=7)
+}
+```
+
+```{r}
+# Calculate ARIs
+library(ggplot2)
+library(fastcluster)
+library(mclust)
+df <- data.frame()
+for (e in names(embeddings_list)){
+  embeddings <- embeddings_list[[e]][,1:2]
+  compare <- sapply(strsplit(rownames(embeddings), '_'), '[', 1)
+  names(compare) <- rownames(embeddings)
+  labels <- rep('NA', nrow(embeddings))
+  names(labels) <- rownames(embeddings)
+  cl.cells.tsne <- hclust.vector(embeddings, method="ward", metric="euclidean")
+  clusters <- cutree(cl.cells.tsne, 8)
+  for (i in 1:8){
+    info <- table(compare[which(clusters==i)])
+    labels[names(clusters[which(clusters==i)])] <- names(which(info == max(info)))
+  }
+  ari <- adjustedRandIndex(compare, labels)
+  row <- c(e, ari)
+  df <- rbind(df, row)
+}
+colnames(df) <- c('Method', 'ARI')
+df
+```
+
+```{r}
+myColors <- c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "SCENIC+ (S)"= 'indianred1', "FigR"= 'purple', "Pando"= 'dodgerblue', 'GRaNIE'='orange', "SCENIC (v10)"='deeppink', "SCENIC (v10c)"='deeppink4', "SCENIC (v10u)"='palevioletred1', 'SCENIC (v9)' = 'hotpink3')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+df[,2] <- as.numeric(df[,2])
+df[,1] <- factor(df[,1], levels = c('SCENIC+', "SCENIC (v10)", 'FigR', 'GRaNIE', 'CellOracle', 'Pando'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/egrn_umaps/ARI.pdf')
+ggplot(df, aes(fill=Method, y=ARI, x=Method)) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('ARI') + theme(axis.text.x = element_text(angle = 90)) + colScale 
+dev.off()
+```

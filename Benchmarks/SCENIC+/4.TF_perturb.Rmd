@@ -1,0 +1,361 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+
+names(regulon_list) <- gsub('_extended', '', names(regulon_list))
+regulon_list <- regulon_list[-grep('_-_-', names(regulon_list), fixed=TRUE)]
+regulon_list <- regulon_list[-grep('_+_-', names(regulon_list), fixed=TRUE)]
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+```
+
+```{r}
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+```
+
+```{r}
+pval_list <- list()
+logFC_TF_list <- list()
+logFC_egrn_list <- list()
+for (exp in names(deseq)){
+  tf <- strsplit(exp, split = "_")[[1]][2]
+  if (tf %in% common_tfs){
+      print(exp)
+      deseq_df <- deseq[[exp]]
+      #deseq_df <- deseq_df[which(deseq_df$padj < 0.1),]
+      logFC_TF_vec <- vector()
+      pval_vec <- vector()
+      logFC_egrn_vec <- vector()
+      for (name in names(regulon_list)){
+        egrn <- regulon_list[[name]]
+        tf <- strsplit(name, split = "_")[[1]][1]
+        if (tf %in% rownames(deseq_df)){
+          logFC_TF_vec <- c(logFC_TF_vec, deseq_df[tf, 'log2FoldChange'])
+          dist <- deseq_df[which(rownames(deseq_df) %in% egrn), 'log2FoldChange']
+          random <- deseq_df[sample(rownames(deseq_df), 100), 'log2FoldChange']
+          if (length(dist) > 1){
+            stat <- t.test(dist, random)$p.value
+          } else {
+            stat <- NA
+          }
+          pval_vec <- c(pval_vec, stat)
+          logFC_egrn_vec <- c(logFC_egrn_vec, mean(dist, na.rm=T))
+        } else {
+          logFC_TF_vec <- c(logFC_TF_vec, NA)
+          pval_vec <- c(pval_vec, NA)
+          logFC_egrn_vec <- c(logFC_egrn_vec, NA)
+        }
+      }
+      pval_list[[exp]] <- as.data.frame(t(p.adjust(pval_vec)))
+      logFC_TF_list[[exp]] <- as.data.frame(t(logFC_TF_vec))
+      logFC_egrn_list[[exp]] <- as.data.frame(t(logFC_egrn_vec))
+      }
+}
+```
+
+
+```{r}
+pval_matrix <- as.matrix(data.table::rbindlist(pval_list))
+rownames(pval_matrix) <- names(pval_list)
+colnames(pval_matrix) <- names(regulon_list)
+logFC_TF <-  as.matrix(data.table::rbindlist(logFC_TF_list))
+rownames(logFC_TF) <- names(logFC_TF_list)
+colnames(logFC_TF) <- names(regulon_list)
+logFC_egrn <- as.matrix(data.table::rbindlist(logFC_egrn_list))
+rownames(logFC_egrn) <- names(logFC_egrn_list)
+colnames(logFC_egrn) <- names(regulon_list)
+```
+
+```{r}
+for (name in rownames(pval_matrix)){
+  df <- cbind(-log10(pval_matrix[name,]+10^-45), logFC_TF[name,], logFC_egrn[name,], rep('', length(logFC_egrn[name,])))
+  colnames(df) <- c('Significance', 'LogFC_TF', 'LogFC_eGRN', 'Name')
+  df <- as.data.frame(df)
+  df[which(df[,'Significance'] > 0.1), 'Name'] <- rownames(df)[which(df[,'Significance'] > 0.1)]
+  df[,1] <- as.numeric(df[,1])
+  df[,2] <- as.numeric(df[,2])
+  df[,3] <- as.numeric(df[,3])
+  library(ggplot2)
+  g <- ggplot(data = df,
+      mapping = aes(
+        x = LogFC_TF,
+        y = Significance,
+        fill = LogFC_eGRN,
+        label= Name)) +
+    geom_point(pch=21) + scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+     midpoint = 0, space = "Lab") +  theme_bw() + geom_text(aes(label=df$Name),hjust=0, vjust=0) +  geom_vline(xintercept = 0, linetype="dotted",  color = "grey", size=1.5) + ggtitle(name)
+  print(g)
+}
+```
+
+
+# Try similar but with GSEA results
+
+```{r}
+library(ggrepel)
+gsea_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_SCENIC+.RDS')
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/Full_DESEQ_results.RDS')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Volcanos_v1.pdf')
+for (name in names(gsea_list)){
+  df <- gsea_list[[name]]
+  df$pathway <- gsub('_extended', '', df$pathway)
+  df$Significance <- -log10(df$padj)
+  df$Name <- rep('', nrow(df))
+  df$tf <- sapply(strsplit(unlist(df$pathway), split = "_"), "[", 1)
+  df$LogFC_TF <- deseq[[name]][df$tf, 'log2FoldChange']
+  df[which(df[,'Significance'] > 2), 'Name'] <- df$pathway[which(df[,'Significance'] > 2)]
+  library(ggplot2)
+  g <- ggplot(data = df,
+      mapping = aes(
+        x = NES,
+        y = Significance,
+        fill = LogFC_TF,
+        label= Name)) +
+    geom_point(pch=21) + scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+     midpoint = 0, space = "Lab") +  theme_bw() + geom_text_repel(aes(label=df$Name),vjust="inward",hjust="inward") +  geom_vline(xintercept = 0, linetype="dotted",  color = "grey", size=1.5) + ggtitle(name)
+  print(g)
+}
+dev.off()
+```
+
+```{r}
+library(ggrepel)
+gsea_list <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_SCENIC+.RDS')
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/Full_DESEQ_results.RDS')
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Volcanos_v2.pdf')
+for (name in names(gsea_list)){
+  df <- gsea_list[[name]]
+  df$pathway <- gsub('_extended', '', df$pathway)
+  df$Significance <- -log10(df$padj)
+  df$Name <- rep('', nrow(df))
+  df$tf <- sapply(strsplit(unlist(df$pathway), split = "_"), "[", 1)
+  df$LogFC_TF <- deseq[[name]][df$tf, 'log2FoldChange']
+  df[which(df[,'Significance'] > 2), 'Name'] <- df$pathway[which(df[,'Significance'] > 2)]
+  library(ggplot2)
+  g <- ggplot(data = df,
+      mapping = aes(
+        x = NES,
+        y = Significance,
+        fill = LogFC_TF,
+        label= Name)) +
+    geom_point(pch=21) + scale_fill_gradient2(low = "dodgerblue", high = "red", mid = "white", 
+     midpoint = 0, space = "Lab") +  theme_bw() + geom_text_repel(aes(label=df$Name),vjust="inward",hjust="inward") +  geom_vline(xintercept = 0, linetype="dotted",  color = "grey", size=1.5) + ggtitle(name)
+  print(g)
+}
+dev.off()
+```
+
+- Cell Oracle
+
+```{r}
+cell_oracle <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/CellOracle/celloracle/outs/target_genes_filtered_V2.tsv')
+
+regulon_list <- list()
+for (TF in unique(cell_oracle$source)){
+  dt <- cell_oracle
+  regulon_list[[paste0(TF, '_+')]] <- unique(dt[which(dt$source == TF), 'target'])
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_celloracle_V2.RDS')
+```
+
+- Pando
+
+```{r}
+pando <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/modules_pando.tsv')
+
+regulon_list <- list()
+for (TF in unique(pando$tf)){
+  dt <- pando
+  regulon_list[[paste0(TF, '_+')]] <- unique(dt[which(dt$tf == TF), 'target'])
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_pando.RDS')
+```
+
+- FigR
+
+```{r}
+
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+figr <- TFenrich.d %>% filter(abs(Score) > 0.5)
+
+regulon_list <- list()
+for (TF in unique(figr$Motif)){
+  dt <- figr
+  regulon_list[[paste0(TF, '_+')]] <- unique(dt[which(dt$Motif == TF), 'DORC'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_figr.RDS')
+```
+
+# Load lists 
+
+```{r}
+scenicplus <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_SCENIC+.RDS')
+scenic <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_scenic_grnboost.RDS')
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_celloracle_V2.RDS')
+figr <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_figr.RDS')
+pando <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/gsea/fgseaRes_list_pando.RDS')
+```
+
+```{r}
+df <- data.frame()
+for (name in names(scenicplus)){
+  dt <- scenicplus[[name]]
+  tf <- strsplit(name, '_')[[1]][2]
+  dt <- dt[grep(paste0(tf,'_'), dt$pathway),] 
+  NES <- max(abs(dt$NES))
+  #path <- as.vector(unlist(dt[1, 'pathway']))
+  #if (length(path) > 0){
+  row <- c(name,tf, NES, 'SCENIC+')
+  df <- rbind(df, row)
+  #}
+}
+
+for (name in names(scenic)){
+  dt <- scenic[[name]]
+  tf <- strsplit(name, '_')[[1]][2]
+  dt <- dt[grep(paste0(tf,'_'), dt$pathway),] 
+  NES <- max(abs(dt$NES))
+  row <- c(name, tf, NES, 'SCENIC')
+  df <- rbind(df, row)
+}
+
+for (name in names(celloracle)){
+  dt <- celloracle[[name]]
+  tf <- strsplit(name, '_')[[1]][2]
+  dt <- dt[grep(paste0(tf,'_'), dt$pathway),] 
+  NES <- max(abs(dt$NES))
+  row <- c(name, tf, NES, 'CellOracle')
+  df <- rbind(df, row)
+}
+
+for (name in names(pando)){
+  dt <- pando[[name]]
+  tf <- strsplit(name, '_')[[1]][2]
+  dt <- dt[grep(paste0(tf,'_'), dt$pathway),] 
+  NES <- max(abs(dt$NES))
+  row <- c(name, tf, NES, 'Pando')
+  df <- rbind(df, row)
+}
+
+for (name in names(figr)){
+  dt <- figr[[name]]
+  tf <- strsplit(name, '_')[[1]][2]
+  dt <- dt[grep(paste0(tf,'_'), dt$pathway),] 
+  NES <- max(abs(dt$NES))
+  row <- c(name, tf, NES, 'FigR')
+  df <- rbind(df, row)
+}
+```
+
+```{r}
+colnames(df) <- c('Name', 'TF', 'NES', 'Method')
+sel_tfs <- unique(df[which(df$NES > 1.5), 'TF'])
+sub_df <- df[which(df$TF %in% sel_tfs),]
+```
+
+
+```{r}
+sub_df$NES <- as.numeric(sub_df$NES)
+sub_df$Method <- factor(sub_df$Method, levels=c('SCENIC+', 'SCENIC', 'FigR', 'CellOracle', 'Pando'))
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Perturbation_boxplot.pdf')
+ggplot(sub_df,aes(x = Method, y = NES, fill=Method)) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('NES') + theme(axis.text.x = element_text(angle = 45, hjust=1)) +   scale_fill_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange'))
+dev.off()
+```

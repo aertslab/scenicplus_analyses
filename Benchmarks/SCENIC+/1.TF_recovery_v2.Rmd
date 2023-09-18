@@ -1,0 +1,816 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Select varaible genes
+
+```{r}
+annotation <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Gene_annotation.tsv', sep='\t')
+genes <- unique(annotation[which(annotation$Transcript_type == 'protein_coding'), 'Gene'])
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+var_genes <- list()
+for (name in names(deseq)){
+  sel_genes <- deseq[[name]][which(deseq[[name]]$padj < 0.05),]
+  sel_genes <- unique(rownames(sel_genes[which(abs(sel_genes$log2FoldChange) > 2.5),]))
+  var_genes[[name]] <- sel_genes
+}
+```
+
+```{r}
+tfs <- unique(sapply(strsplit(unlist(names(var_genes)), split = "_"), "[", 2))
+ls <- vector()
+var_genes_ls <- lengths(var_genes)
+for (name in tfs){
+  ls <- c(ls, max(var_genes_ls[grep(name, names(var_genes_ls))]))
+}
+names(ls) <- tfs
+ls <- ls[-which(names(ls) %in% 'CTCF+RAD21')]
+```
+
+```{r}
+hit_tfs <- list()
+```
+
+## SCENIC+ - GRNBoost
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+regulon_list <- regulon_list[which(lengths(regulon_list) > 10)]
+```
+
+```{r}
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+hit_tfs[['SCENIC+']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('SCENIC+_GRNboost')
+df <- as.data.frame(cbind(x,y, anal))
+```
+
+## CellOracle
+
+```{r}
+cell_oracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+cell_oracle <- cell_oracle[,c(1,3)]
+cell_oracle <- cell_oracle[!duplicated(cell_oracle),]
+
+regulon_list <- list()
+for (TF in unique(cell_oracle$TF)){
+  dt <- cell_oracle
+  regulon_list[[TF]] <- unique(dt[which(dt$TF== TF), 'Gene'])
+}
+
+regulon_list <- regulon_list[which(lengths(regulon_list) > 60)]
+```
+
+```{r}
+regulon_tfs <- unique(names(regulon_list))
+hit_tfs[['CellOracle']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('CellOracle')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+
+## SCENIC - GRNBOOST
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost/out/data/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+regulon_list <- regulon_list[which(lengths(regulon_list) > 10)]
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+hit_tfs[['SCENIC']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('SCENIC_GRNBoost')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## Pando
+
+```{r}
+pando <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/modules_pando.tsv')
+
+regulon_list <- list()
+for (TF in unique(pando$tf)){
+  dt <- pando
+  regulon_list[[TF]] <- unique(dt[which(dt$tf == TF), 'target'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 10)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['Pando']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('Pando')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## FigR
+
+```{r}
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+figr <- TFenrich.d %>% filter(abs(Score) > 0.5)
+
+regulon_list <- list()
+for (TF in unique(figr$Motif)){
+  dt <- figr
+  regulon_list[[TF]] <- unique(dt[which(dt$Motif == TF), 'DORC'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 10)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['FigR']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('FigR')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## GRANIE
+
+```{r}
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+
+regulon_list <- list()
+for (TF in unique(as.vector(unlist(granie$TF.ENSEMBL)))){
+  if (!is.na(TF)){
+    dt <- granie
+    regulon_list[[TF]] <- unique(as.vector(unlist(dt[which(dt$TF.ENSEMBL == TF), 'gene.ENSEMBL'])))
+  }
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 10)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['GRaNIE']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('GRaNIE')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+```{r}
+df2 <- df
+colnames(df2) <- c('x', 'y', 'Method')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) +
+  geom_line()+
+  geom_point()+theme_classic() + ylab('TF with eRegulon') + xlab('TF perturbation effect')
+```
+
+```{r}
+df2$Method <- gsub('_GRNBoost', '', df2$Method)
+df2$Method <- gsub('_GRNboost', '', df2$Method)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_pert_recovery_v2.pdf')
+ggplot(data=df2, aes(x=x, y=y)) +
+  geom_point(aes(colour = Method)) + 
+  geom_line(aes(colour = Method)) +
+  scale_colour_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('TF in eGRN') + xlab('TF perturbation effect') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+
+```{r}
+library(DescTools)
+auc_list<-list()
+for (method in c('SCENIC+', 'CellOracle', 'FigR', 'Pando', 'SCENIC', 'GRaNIE')){
+  auc_list[[method]] <- AUC(df2[which(df2$Method == method), c('x')], df2[which(df2$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_pert_AUC_v2.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+# Make overlap dotplot
+
+```{r}
+library(UpSetR)
+hit_tfs_filt <- list()
+for (name in names(hit_tfs)){
+  hit_tfs_filt[[name]] <- unique(hit_tfs[[name]][which(hit_tfs[[name]] %in% names(ls))])
+}
+```
+
+```{r}
+par(las=2)
+upset(fromList(hit_tfs_filt), order.by = "freq", mainbar.y.label = "Number of hits")
+```
+# Same but with ChIP-seq tracks
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/peaks_per_tracks.tsv')
+df$X <- sapply(strsplit(df$X, split = "_"), "[", 2)
+df <- aggregate(df$X0, list(df$X), max)
+ls <- as.vector(unlist(df$x))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+hit_tfs <- list()
+```
+
+## SCENIC+ - GRNBoost
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+hit_tfs[['SCENIC+']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('SCENIC+_GRNboost')
+df <- as.data.frame(cbind(x,y, anal))
+```
+
+## CellOracle
+
+```{r}
+cell_oracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+cell_oracle <- cell_oracle[,c(1,3)]
+cell_oracle <- cell_oracle[!duplicated(cell_oracle),]
+
+regulon_list <- list()
+for (TF in unique(cell_oracle$TF)){
+  dt <- cell_oracle
+  regulon_list[[TF]] <- unique(dt[which(dt$TF== TF), 'Gene'])
+}
+
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- unique(names(regulon_list))
+hit_tfs[['CellOracle']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('CellOracle')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+
+## SCENIC - GRNBOOST
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost/out/data/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+hit_tfs[['SCENIC']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('SCENIC_GRNBoost')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## Pando
+
+```{r}
+pando <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/modules_pando.tsv')
+
+regulon_list <- list()
+for (TF in unique(pando$tf)){
+  dt <- pando
+  regulon_list[[TF]] <- unique(dt[which(dt$tf == TF), 'target'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['Pando']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('Pando')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## FigR
+
+```{r}
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+figr <- TFenrich.d %>% filter(abs(Score) > 0.5)
+
+regulon_list <- list()
+for (TF in unique(figr$Motif)){
+  dt <- figr
+  regulon_list[[TF]] <- unique(dt[which(dt$Motif == TF), 'DORC'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['FigR']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('FigR')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## GRANIE
+
+```{r}
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+
+regulon_list <- list()
+for (TF in unique(as.vector(unlist(granie$TF.ENSEMBL)))){
+  if (!is.na(TF)){
+    dt <- granie
+    regulon_list[[TF]] <- unique(as.vector(unlist(dt[which(dt$TF.ENSEMBL == TF), 'gene.ENSEMBL'])))
+  }
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['GRaNIE']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('GRaNIE')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+```{r}
+df2 <- df
+colnames(df2) <- c('x', 'y', 'Method')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) +
+  geom_line()+
+  geom_point()+theme_classic() + ylab('TF with eRegulon') + xlab('Rank by number of ChIP-seq peaks')
+```
+
+```{r}
+df2$Method <- gsub('_GRNBoost', '', df2$Method)
+df2$Method <- gsub('_GRNboost', '', df2$Method)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_Chipseq_recovery_v2.pdf')
+ggplot(data=df2, aes(x=x, y=y)) +
+  geom_point(aes(colour = Method)) + 
+  geom_line(aes(colour = Method)) +
+  scale_colour_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('TF in eGRN') + xlab('TF perturbation effect') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+
+```{r}
+library(DescTools)
+auc_list<-list()
+for (method in c('SCENIC+', 'CellOracle', 'FigR', 'Pando', 'SCENIC', 'GRaNIE')){
+  auc_list[[method]] <- AUC(df2[which(df2$Method == method), c('x')], df2[which(df2$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_Chipseq_AUC_v2.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+# Make overlap dotplot
+
+```{r}
+library(UpSetR)
+hit_tfs_filt <- list()
+for (name in names(hit_tfs)){
+  hit_tfs_filt[[name]] <- unique(hit_tfs[[name]][which(hit_tfs[[name]] %in% names(ls))])
+}
+```
+
+```{r}
+par(las=2)
+upset(fromList(hit_tfs_filt), order.by = "freq", mainbar.y.label = "Number of hits")
+```
+
+# Same but with Unibind tracks
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.numeric(as.vector(unlist(df$x)))
+names(ls) <- as.vector(unlist(df$Group.1))
+```
+
+```{r}
+hit_tfs <- list()
+```
+
+## SCENIC+ - GRNBoost
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+hit_tfs[['SCENIC+']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('SCENIC+_GRNboost')
+df <- as.data.frame(cbind(x,y, anal))
+```
+
+## CellOracle
+
+```{r}
+cell_oracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+cell_oracle <- cell_oracle[,c(1,3)]
+cell_oracle <- cell_oracle[!duplicated(cell_oracle),]
+
+regulon_list <- list()
+for (TF in unique(cell_oracle$TF)){
+  dt <- cell_oracle
+  regulon_list[[TF]] <- unique(dt[which(dt$TF== TF), 'Gene'])
+}
+
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- unique(names(regulon_list))
+hit_tfs[['CellOracle']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('CellOracle')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+
+## SCENIC - GRNBOOST
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost/out/data/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+```
+
+```{r}
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+hit_tfs[['SCENIC']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('SCENIC_GRNBoost')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## Pando
+
+```{r}
+pando <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/modules_pando.tsv')
+
+regulon_list <- list()
+for (TF in unique(pando$tf)){
+  dt <- pando
+  regulon_list[[TF]] <- unique(dt[which(dt$tf == TF), 'target'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['Pando']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('Pando')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## FigR
+
+```{r}
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+figr <- TFenrich.d %>% filter(abs(Score) > 0.5)
+
+regulon_list <- list()
+for (TF in unique(figr$Motif)){
+  dt <- figr
+  regulon_list[[TF]] <- unique(dt[which(dt$Motif == TF), 'DORC'])
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['FigR']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('FigR')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+## GRANIE
+
+```{r}
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+
+regulon_list <- list()
+for (TF in unique(as.vector(unlist(granie$TF.ENSEMBL)))){
+  if (!is.na(TF)){
+    dt <- granie
+    regulon_list[[TF]] <- unique(as.vector(unlist(dt[which(dt$TF.ENSEMBL == TF), 'gene.ENSEMBL'])))
+  }
+}
+regulon_list <- regulon_list[lengths(regulon_list)]
+regulon_list <- regulon_list[which(lengths(regulon_list) > 20)]
+```
+
+```{r}
+regulon_tfs <- names(regulon_list)
+hit_tfs[['GRaNIE']] <- regulon_tfs
+ordered_ls <- rev(sort(ls))
+y <- cumsum(names(ordered_ls) %in% regulon_tfs)
+names(y) <- names(ordered_ls)
+x <- 1:length(y)
+anal <- rep('GRaNIE')
+df <- rbind(df, as.data.frame(cbind(x,y, anal)))
+df$x <- as.numeric(df$x)
+df$y <- as.numeric(df$y)
+```
+
+```{r}
+df2 <- df
+colnames(df2) <- c('x', 'y', 'Method')
+ggplot(data=df2, aes(x=x, y=y, color=Method)) +
+  geom_line()+
+  geom_point()+theme_classic() + ylab('TF with eRegulon') + xlab('Rank by number of Unbind peaks')
+```
+
+```{r}
+df2$Method <- gsub('_GRNBoost', '', df2$Method)
+df2$Method <- gsub('_GRNboost', '', df2$Method)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_Unibind_recovery_v2.pdf')
+ggplot(data=df2, aes(x=x, y=y)) +
+  geom_point(aes(colour = Method)) + 
+  geom_line(aes(colour = Method)) +
+  scale_colour_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('TF in eGRN') + xlab('TF perturbation effect') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+
+```{r}
+library(DescTools)
+auc_list<-list()
+for (method in c('SCENIC+', 'CellOracle', 'FigR', 'Pando', 'SCENIC', 'GRaNIE')){
+  auc_list[[method]] <- max(df2[which(df2$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_Unibind_Max_v2.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+```{r}
+library(DescTools)
+auc_list<-list()
+for (method in c('SCENIC+', 'CellOracle', 'FigR', 'Pando', 'SCENIC', 'GRaNIE')){
+  auc_list[[method]] <- AUC(df2[which(df2$Method == method), c('x')], df2[which(df2$Method == method), c('y')])
+}
+```
+
+```{r}
+# Hits at position 1
+df <- as.data.frame(cbind(unlist(auc_list), names(auc_list)))
+colnames(df) <- c('Value', 'Method')
+df$Value <- as.numeric(unlist(df$Value))
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/TF_Unibind_AUC_v2.pdf')
+ggplot(data=df, aes(x=reorder(Method, -Value), y=Value, fill=Method)) +
+  geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("CellOracle"= 'forestgreen', "SCENIC+"= 'red', "FigR"= 'purple', "Pando"= 'dodgerblue', "SCENIC"='orange', 'GRaNIE'='deeppink')) +
+    theme_bw() + ylab('AUC') + xlab('Method') + theme(text = element_text(size = 20))
+dev.off()
+```
+
+# Make overlap dotplot
+
+```{r}
+library(UpSetR)
+hit_tfs_filt <- list()
+for (name in names(hit_tfs)){
+  hit_tfs_filt[[name]] <- unique(hit_tfs[[name]][which(hit_tfs[[name]] %in% names(ls))])
+}
+```
+
+```{r}
+par(las=2)
+upset(fromList(hit_tfs_filt), order.by = "freq", mainbar.y.label = "Number of hits")
+```
+
+# Select varaible genes
+
+```{r}
+annotation <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Gene_annotation.tsv', sep='\t')
+genes <- unique(annotation[which(annotation$Transcript_type == 'protein_coding'), 'Gene'])
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+var_genes <- list()
+for (name in names(deseq)){
+  sel_genes <- deseq[[name]][which(deseq[[name]]$padj < 0.05),]
+  sel_genes <- unique(rownames(sel_genes[which(abs(sel_genes$log2FoldChange) > 2.5),]))
+  var_genes[[name]] <- sel_genes
+}
+```
+
+```{r}
+tfs <- unique(sapply(strsplit(unlist(names(var_genes)), split = "_"), "[", 2))
+ls <- vector()
+var_genes_ls <- lengths(var_genes)
+for (name in tfs){
+  ls <- c(ls, max(var_genes_ls[grep(name, names(var_genes_ls))]))
+}
+names(ls) <- tfs
+ls <- ls[-which(names(ls) %in% 'CTCF+RAD21')]
+ls_rna <- ls
+```
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/ChIP-seq/motif_enrichment_benchmark/peaks_per_tracks.tsv')
+df$X <- sapply(strsplit(df$X, split = "_"), "[", 2)
+df <- aggregate(df$X0, list(df$X), max)
+ls <- as.vector(unlist(df$x))
+names(ls) <- as.vector(unlist(df$Group.1))
+ls_chip <- ls
+```
+
+```{r}
+df <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/peaks_per_tracks_unibind.tsv', header=FALSE, sep='')
+df[,2] <- gsub('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Unibind_to_consensus/', '', df[,2])
+df[,2] <- sapply(strsplit(df[,2], split = "\\."), "[", 3)
+df <- aggregate(df[,1], list(df[,2]), max)
+ls <- as.vector(unlist(df$x))
+names(ls) <- as.vector(unlist(df$Group.1))
+ls_unibind <- ls
+```
+
+```{r}
+common <- names(ls_rna)[which(names(ls_rna) %in% names(ls_chip))]
+plot(rank(ls_rna)[common], rank(ls_chip)[common])
+```
+
+```{r}
+common <- names(ls_unibind)[which(names(ls_unibind) %in% names(ls_chip))]
+plot(rank(ls_rna)[common], rank(ls_chip)[common])
+```

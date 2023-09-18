@@ -1,0 +1,53 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Select data
+
+```{r}
+metadata <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/metadata.tsv', sep='\t')
+metadata <- metadata[which(metadata[,'Output.type'] == 'gene quantifications'),]
+metadata <- metadata[which(metadata[,'File.assembly'] == 'GRCh38'),]
+metadata <- metadata[which(metadata[,'Genome.annotation'] == 'V29'),]
+metadata <- metadata[-which(metadata[,'File.accession'] %in% c('ENCFF223RNN', 'ENCFF443FXF')),]
+metadata <- metadata[,c('File.accession', 'Assay', 'Biosample.term.name', 'Experiment.target', 'Biosample.genetic.modifications.categories', 'Technical.replicate.s.')]
+metadata$Technical.replicate.s. <-sapply(strsplit(unlist(metadata$Technical.replicate.s.), split = "_"), "[", 1)
+metadata$Experiment.target <-sapply(strsplit(unlist(metadata$Experiment.target), split = "-"), "[", 1)
+```
+
+```{r}
+t(table(metadata$Assay, metadata$Biosample.term.name))
+```
+
+```{r}
+table(metadata$Assay)
+table(metadata$Biosample.genetic.modifications.categories)
+table(metadata$Biosample.term.name)
+table(metadata$Experiment.target)
+table(metadata$Technical.replicate.s.)
+```
+
+```{r}
+metadata$sample_name <- gsub(' ', '-', paste0(metadata$Biosample.term.name, '_', metadata$Experiment.target, '_', metadata$Assay, '_', metadata$Technical.replicate.s.))
+length(metadata$sample_name)
+length(unique(metadata$sample_name))
+```
+
+```{r}
+count_matrix <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/count_matrix.RDS')
+library(stringr)
+sample_names <- colnames(count_matrix)
+```
+
+```{r}
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+```
+
+```{r}
+metadata <- metadata[which(metadata$sample_name %in% sample_names),]
+```
+
+```{r}
+write.table(metadata, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/filtered_metadata.tsv', sep='\t')
+```

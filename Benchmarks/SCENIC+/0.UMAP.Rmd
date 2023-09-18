@@ -1,0 +1,46 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Mouse
+
+```{r}
+library(SCopeLoomR)
+loom <- open_loom('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/SCENIC+_DPCL_grnboost_gene_based.loom')
+cell_data <- get_cell_annotation(loom)
+embeddings <- get_embeddings(loom)
+gene_umap <- embeddings$eRegulons_UMAP
+colnames(gene_umap) <- c('UMAP_1', 'UMAP_2')
+cell_data[] <- lapply(cell_data, sub, pattern = " ", replacement = "-")
+cell_data[] <- lapply(cell_data, sub, pattern = "-(.*)", replacement = "")
+# Color UMAP by cell type
+cell_plot_data <- cbind(gene_umap, cell_data[rownames(gene_umap),])
+```
+
+```{r}
+sort(unique(cell_data$ACC_Cell_type))
+```
+
+```{r}
+library(RColorBrewer)
+colvar <- brewer.pal(8, 'Set1')
+names(colvar) <- sort(unique(cell_data$ACC_Cell_type))
+colvar['MCF7'] <- '#ccc833'
+```
+
+```{r}
+# Load functions
+library(ggplot2)
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/'
+source('/staging/leuven/stg_00002/lcb/cbravo/software/plotting_aux.R')
+plot <- ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=ACC_Cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + 
+  scale_fill_manual(values = colvar)
+ggplot(cell_plot_data, aes(x=UMAP_1, y=UMAP_2, colour=ACC_Cell_type)) + geom_point(size = 0.2) + theme_classic() + theme(legend.position = "none") + labs(x = NULL, y = NULL) + 
+  guides(x = "none", y = "none") + scale_color_manual(values = colvar)
+ggsave(filename = paste0(path, 'Grnboost_UMAP_no_labels.png'), device='png', bg = "transparent",
+       width=7, height=7)
+pdf(paste0(path, 'Grnboost_UMAP_with_labels.pdf'))
+LabelClusters(plot, 'ACC_Cell_type', split.by ='ACC_Cell_type', box=FALSE, repel=TRUE)  + scale_color_manual(values = colvar)
+dev.off()
+```

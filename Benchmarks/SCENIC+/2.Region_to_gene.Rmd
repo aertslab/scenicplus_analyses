@@ -1,0 +1,1302 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+
+```{r}
+hic_data <- read.table('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HepG2_ENCFF020DPP_5Kb_SCALE.txt', header=T)
+```
+
+```{r}
+library(ggplot2)
+ggplot(hic_data, aes(Distance_to_gene, Score)) +
+ geom_bin2d(bins = 300) + theme_classic() +  scale_fill_gradientn(colours = brewer.pal(9, "Reds"), name = "count", trans = "log10")
+```
+
+```{r}
+library(ggplot2)
+hic_data_sub <- hic_data[which(hic_data$Distance_to_gene < 5000000),]
+hic_data_sub <- hic_data_sub[which(hic_data_sub$Distance_to_gene > -5000000),]
+ggplot(hic_data_sub, aes(Distance_to_gene, Score))  +
+ geom_bin2d(bins = 300) + theme_classic() +  scale_fill_gradientn(colours = brewer.pal(9, "Reds"), name = "count", trans = "log10") +
+  geom_vline(xintercept = -150000, linetype="dotted", color = "grey", size=1) + geom_vline(xintercept = +150000, linetype="dotted", color = "grey", size=1)+ geom_hline(yintercept = 300, linetype="dotted", color = "grey", size=1)
+```
+
+```{r}
+library(ggplot2)
+hic_data_sub <- hic_data[which(hic_data$Distance_to_gene < 5000000),]
+hic_data_sub <- hic_data_sub[which(hic_data_sub$Distance_to_gene > -5000000),]
+hic_data_sub$Abs_Distance_to_gene <- abs(hic_data_sub$Distance_to_gene)
+ggplot(hic_data_sub, aes(Abs_Distance_to_gene, Score))  + geom_bin2d(bins = 300) + theme_classic() +  scale_fill_gradientn(colours = brewer.pal(9, "Reds"), name = "count", trans = "log10") + geom_vline(xintercept = 150000, linetype="dotted", color = "grey", size=1) + geom_hline(yintercept = 300, linetype="dotted", color = "grey", size=1)
+```
+
+```{r}
+library(ggplot2)
+hic_data_sub <- hic_data[which(hic_data$Gene == 'FOXA1'),]
+hic_data_sub$Abs_Distance_to_gene <- abs(hic_data_sub$Distance_to_gene)
+ggplot(hic_data_sub, aes(Abs_Distance_to_gene, Score)) + geom_point(color='red') + theme_classic() + geom_vline(xintercept = +150000, linetype="dotted", color = "grey", size=1) + geom_hline(yintercept = 300, linetype="dotted", color = "grey", size=1)
+```
+
+# Load info 
+
+```{r}
+hic_files <- c('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/IMR90_ENCFF685BLG_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GM12878_ENCFF053VBX_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HCT116_ENCFF750AOC_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HepG2_ENCFF020DPP_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/K562_ENCFF080DPJ_5Kb_SCALE.txt')
+names(hic_files) <- c('IMR90', 'GM12878', 'HCT116', 'HepG2', 'K562')
+hic_list <- list()
+for (name in names(hic_files)){
+  hic_list[[name]] <- read.table(hic_files[[name]], header=T)
+}
+```
+
+```{r}
+# All_links
+all_hic <- data.table::rbindlist(hic_list)
+dict <- all_hic[,c('Gene', 'Transcription_Start_Site', 'Strand')]
+dict <- dict[!duplicated(dict), ]
+dict <- as.data.frame(dict)
+rownames(dict) <- dict[,1]
+```
+
+```{r}
+head(hic_list[[name]])
+```
+
+# Format to export file
+```{r}
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+figr <- figr[which(figr$Gene %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(unlist(figr$PeakRanges), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(unlist(figr$PeakRanges), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- figr$rObs
+Gene <- as.vector(unlist(figr$Gene))
+Transcription_Start_Site <- dict[as.vector(unlist(figr$Gene)), 'Transcription_Start_Site']
+Strand <- dict[as.vector(unlist(figr$Gene)), 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- as.vector(unlist(figr$PeakRanges))
+figr_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(figr_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/FigR_links.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# Celloracle
+# Format
+celloracle <-read.table('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/CellOracle/celloracle/outs/peak_to_gene.tsv', header=T)
+filt <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/CellOracle/celloracle/outs/target_genes_filtered_V2.tsv')
+ocurrance_table <- as.data.frame(read_parquet('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/CellOracle/celloracle/outs/base_GRN_dataframe_V2.parquet'))
+ocurrance_df <- data.frame()
+for (tf in colnames(ocurrance_table)[3:ncol(ocurrance_table)]){
+  sub_1 <- ocurrance_table[which(ocurrance_table[,tf] == 1),]
+  target <- as.vector(unlist(filt[which(filt$source == tf),'target']))
+  sub_3 <- as.data.frame(sub_1[which(sub_1[,2] %in% target),])
+  if (nrow(sub_3) > 0){
+      x <- cbind(sub_3[,1], sub_3[,2], tf)
+      ocurrance_df <- rbind(ocurrance_df, x)
+  }
+}
+
+ocurrance_df <- ocurrance_df[!duplicated(ocurrance_df),]
+colnames(ocurrance_df) <- c('Region', 'Gene', 'TF')
+df <- merge(ocurrance_df, filt, by.x=c('Gene', 'TF'), by.y=c('target', 'source'), all.x=FALSE, all.y=FALSE)
+df <- merge(df, celloracle, by.x=c('Gene', 'Region'), by.y=c('gene_short_name', 'peak_id'),  all.x=FALSE, all.y=FALSE)
+saveRDS(df, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+```
+
+```{r}
+#CellOracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+celloracle <- celloracle[which(celloracle$coaccess > 0),]
+celloracle <- celloracle[which(celloracle$Gene %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(unlist(celloracle$Region), split = "_"), "[", 1)
+Start <- sapply(strsplit(unlist(celloracle$Region), split = "_"), "[", 2)
+End <- sapply(strsplit(unlist(celloracle$Region), split = "_"), "[", 3)
+Score <- celloracle$coaccess
+Gene <- as.vector(unlist(celloracle$Gene))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+celloracle_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(celloracle_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/CellOracle_links_2K.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+granie <- granie[which(granie$peak_gene.r > 0),]
+granie <- granie[which(as.vector(unlist(granie$gene.ENSEMBL)) %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(as.vector(unlist(granie$peak.ID)), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(as.vector(unlist(granie$peak.ID)), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- granie$peak_gene.r
+Gene <- as.vector(unlist(granie$gene.ENSEMBL))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+granie_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(granie_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GRaNIE_links.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# SCENIC+ - Rho
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+scenicplus <- scenicplus[which(as.vector(unlist(scenicplus$target)) %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- scenicplus$rho
+Gene <- as.vector(unlist(scenicplus$target))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+scenicplus_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(scenicplus_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/Scenicplus-rho_links.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# SCENIC+ - Importance
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+scenicplus <- scenicplus[which(as.vector(unlist(scenicplus$target)) %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- scenicplus$importance
+Gene <- as.vector(unlist(scenicplus$target))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+scenicplus_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(scenicplus_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/Scenicplus-importance_links.txt', quote=FALSE, sep='\t')
+```
+
+
+```{r}
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+# Celloracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+celloracle <- celloracle[,c('Gene', 'Region', 'coaccess')]
+celloracle <- celloracle[which(celloracle$coaccess > 0),]
+celloracle <- celloracle[!duplicated(celloracle),]
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+granie <- as.data.frame(granie[which(granie$peak_gene.r > 0),])
+granie <- granie[,c('peak.ID', 'gene.ENSEMBL', 'peak_gene.r')]
+granie <- granie[!duplicated(granie),]
+# SCENIC+
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+```
+
+# Get Stats
+
+```{r}
+hic_files <- c('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/IMR90_ENCFF685BLG_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GM12878_ENCFF053VBX_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HCT116_ENCFF750AOC_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HepG2_ENCFF020DPP_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/K562_ENCFF080DPJ_5Kb_SCALE.txt')
+names(hic_files) <- c('IMR90', 'GM12878', 'HCT116', 'HepG2', 'K562')
+
+plot_list_1 <- list()
+plot_list_2 <- list()
+
+library(RColorBrewer)
+myColors <- c(brewer.pal(4,"Set1"), 'deeppink')
+names(myColors) <- c('SCENIC+_Rho', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+
+name <- names(hic_files)[2]
+for (name in names(hic_files)){
+  print(name)
+  hic_file <- hic_files[name]
+  degs_file <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus/DEGs/', name, '.tsv')
+  hic_data <- read.table(hic_file, header=T)
+  hic_data$name <- paste0(hic_data$Region_id, '_',  hic_data$Gene)
+  hic_data <- hic_data[,c('name', 'Score', 'Distance_to_gene')]
+  
+  # Load links from SCENIC+
+  grnboost_data <- scenicplus
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  
+  # Load links from figr
+  figr_data <- figr
+  print(paste0('Number of links in FigR data: ', nrow(figr_data)))
+  colnames(figr_data) <-  paste0('FigR_', colnames(figr_data))
+  figr_data$name <- paste0(figr_data$FigR_PeakRanges, '_',figr_data$FigR_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% figr_data$name),]
+  figr_data <- figr_data[which(figr_data$name %in% hic_data_x$name),]
+  figr_df <- merge(hic_data_x, figr_data, by='name', all=TRUE) 
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  
+  # Load links form celloracle
+  celloracle_data <- celloracle
+  print(paste0('Number of links in CellOracle data: ',nrow(celloracle_data)))
+  colnames(celloracle_data) <-  paste0('CellOracle_', colnames(celloracle_data))
+  chr <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 1)
+  start <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 2)
+  end <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 3)
+  celloracle_data$CellOracle_Region <- paste0(chr, ':', start, '-', end)
+  celloracle_data$name <- paste0(celloracle_data$CellOracle_Region, '_',celloracle_data$CellOracle_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% celloracle_data$name),]
+  celloracle_data <- celloracle_data[which(celloracle_data$name %in% hic_data_x$name),]
+  celloracle_df <- merge(hic_data_x, celloracle_data, by='name', all=TRUE) 
+  print(paste0('Number of links in CellOracle data after filtering: ', nrow(celloracle_df)))
+  
+  # Load links from granie
+  granie_data <- granie
+  print(paste0('Number of links in GRaNIE data: ',nrow(granie_data)))
+  colnames(granie_data) <-  paste0('GRaNIE_', colnames(granie_data))
+  granie_data$name <- paste0(granie_data$GRaNIE_peak.ID, '_',granie_data$GRaNIE_gene.ENSEMBL)
+  hic_data_x <- hic_data[which(hic_data$name %in% granie_data$name),]
+  granie_data <- granie_data[which(granie_data$name %in% hic_data_x$name),]
+  granie_df <- merge(hic_data_x, granie_data, by='name', all=TRUE) 
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  
+  degs <- read.delim(degs_file)
+  #genes <- as.vector(unlist(degs[which(degs$Log2FC > 5), 1]))
+  genes <- as.vector(unlist(degs[1:100, 1]))
+  scenic_df <- scenic_df[which(scenic_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  figr_df <- figr_df[which(figr_df$FigR_Gene %in% genes),]
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  granie_df <- granie_df[which(granie_data$GRaNIE_gene.ENSEMBL %in% genes),]
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  celloracle_df <- celloracle_df[which(celloracle_data$CellOracle_Gene %in% genes),]
+  print(paste0('Number of links in CellOracle data after filtering: ',nrow(celloracle_df)))
+  df_list_scenic <- split(scenic_df, f = scenic_df$GBM_target)
+  df_list_figr <- split(figr_df, f = figr_df$FigR_Gene)
+  df_list_granie <- split(granie_df, f = granie_df$GRaNIE_gene.ENSEMBL)
+  df_list_celloracle <- split(celloracle_df, f = celloracle_df$CellOracle_Gene)
+  measurements <- list()
+  library(plyr)
+  measurements[['SCENIC+_Rho']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_Importance']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['FigR']] <- unlist(llply(df_list_figr, function(x) cor(x[,'Score'], x[,'FigR_rObs'], method='spearman')))
+  measurements[['CellOracle']] <- unlist(llply(df_list_celloracle, function(x) cor(x[,'Score'], abs(x[,'CellOracle_coaccess']), method='spearman')))
+  measurements[['GRaNIE']] <- unlist(llply(df_list_granie, function(x) cor(x[,'Score'], abs(x[,"GRaNIE_peak_gene.r"]), method='spearman')))
+  measurements[['Random']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], sample(x[,'GBM_importance']), method='spearman')))
+  
+  # Perorm pairwise comparisons
+  library(ggpubr)
+  d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+  d <- d[complete.cases(d),]
+  compare_means(x ~ grp,  data = d, ref.group = "Random")
+  
+  # Visualize: Specify the comparisons you want
+  plot_list_1[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = mean), y = x, fill=reorder(grp, x, FUN = median))) + geom_violin() + geom_boxplot(width=0.1, color="grey", alpha=0.2) + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random")  + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+
+  plot_list_2[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = mean), y = x, fill=reorder(grp, x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+}
+```
+
+
+
+```{r}
+ggarrange(plot_list_1[[1]], plot_list_1[[2]], plot_list_1[[3]], plot_list_1[[4]], plot_list_1[[5]],
+          ncol = 3, nrow = 2)
+saveRDS(plot_list_1, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_1.RDS')
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/GM12878_hic_boxplot.pdf')
+plot_list_2[[2]]
+dev.off()
+```
+```{r}
+#Create a custom color scale
+ggarrange(plot_list_2[[1]], plot_list_2[[2]], plot_list_2[[3]], plot_list_2[[4]], plot_list_2[[5]],
+          ncol = 3, nrow = 2)
+saveRDS(plot_list_2, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_2.RDS')
+```
+
+# Same but with all links
+```{r}
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+figr <- figr[which(figr$Gene %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(unlist(figr$PeakRanges), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(unlist(figr$PeakRanges), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- figr$rObs
+Gene <- as.vector(unlist(figr$Gene))
+Transcription_Start_Site <- dict[as.vector(unlist(figr$Gene)), 'Transcription_Start_Site']
+Strand <- dict[as.vector(unlist(figr$Gene)), 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- as.vector(unlist(figr$PeakRanges))
+figr_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(figr_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/FigR_links.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# Celloracle
+# Format
+celloracle <-read.table('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/CellOracle/celloracle/outs/peak_to_gene.tsv', header=T)
+colnames(celloracle) <- c('Region', 'Gene', 'coaccess')
+saveRDS(celloracle, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+```
+
+```{r}
+#CellOracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+celloracle <- celloracle[which(celloracle$coaccess > 0),]
+celloracle <- celloracle[which(celloracle$Gene %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(unlist(celloracle$Region), split = "_"), "[", 1)
+Start <- sapply(strsplit(unlist(celloracle$Region), split = "_"), "[", 2)
+End <- sapply(strsplit(unlist(celloracle$Region), split = "_"), "[", 3)
+Score <- celloracle$coaccess
+Gene <- as.vector(unlist(celloracle$Gene))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+celloracle_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(celloracle_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/CellOracle_links_2K_all.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.peak_to_gene.RDS')
+granie <- granie[which(granie$peak_gene.r > 0),]
+granie <- granie[which(granie$padj<0.2),]
+granie <- granie[which(as.vector(unlist(granie$gene.ENSEMBL)) %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(as.vector(unlist(granie$peak.ID)), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(as.vector(unlist(granie$peak.ID)), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- granie$peak_gene.r
+Gene <- as.vector(unlist(granie$gene.ENSEMBL))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+granie_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(granie_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GRaNIE_links_all.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# SCENIC+ - Rho
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_pos.tsv')
+scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+scenicplus <- scenicplus[which(as.vector(unlist(scenicplus$target)) %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- scenicplus$rho
+Gene <- as.vector(unlist(scenicplus$target))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+scenicplus_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(scenicplus_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/Scenicplus-rho_links_all.txt', quote=FALSE, sep='\t')
+```
+
+```{r}
+# SCENIC+ - Importance
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_pos.tsv')
+scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+scenicplus <- scenicplus[which(as.vector(unlist(scenicplus$target)) %in% rownames(dict)),]
+Chromosome <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 1)
+Coordinates <- sapply(strsplit(as.vector(unlist(scenicplus$region)), split = ":"), "[", 2)
+Start <- sapply(strsplit(Coordinates, split = "-"), "[", 1)
+End <- sapply(strsplit(Coordinates, split = "-"), "[", 2)
+Score <- scenicplus$importance
+Gene <- as.vector(unlist(scenicplus$target))
+Transcription_Start_Site <- dict[Gene, 'Transcription_Start_Site']
+Strand <- dict[Gene, 'Strand']
+Distance_to_gene <- as.numeric(Start)-as.numeric(Transcription_Start_Site)
+Region_id <- paste0(Chromosome, ':', Start, '-', End)
+scenicplus_formatted <- cbind(Chromosome, Start, End, Gene, Score, Transcription_Start_Site, Strand, Distance_to_gene, Region_id)
+write.table(scenicplus_formatted, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/Scenicplus-importance_links_all.txt', quote=FALSE, sep='\t')
+```
+
+
+```{r}
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+dim(figr)
+#load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+#TFenrich.d  <- TFenrich.d %>% filter(abs(Score) > 0.5)
+#figr <- figr[which(figr$Gene %in% TFenrich.d$DORC),]
+# Celloracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+celloracle <- celloracle[,c('Gene', 'Region', 'coaccess')]
+celloracle <- celloracle[which(celloracle$coaccess > 0),]
+celloracle <- celloracle[!duplicated(celloracle),]
+dim(celloracle)
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.peak_to_gene.RDS')
+granie <- as.data.frame(granie)
+granie <- granie[which(granie$peak_gene.r > 0),]
+granie <- granie[which(granie$padj<0.2),]
+granie$gene.ENSEMBL <- as.vector(unlist(granie$gene.ENSEMBL))
+granie$peak.ID <- as.vector(unlist(granie$peak.ID))
+dim(granie)
+# SCENIC+
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+#scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+dim(scenicplus)
+```
+
+```{r}
+scientific_10 <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'deeppink')
+names(myColors) <- c('SCENIC+', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- cbind(c(66024, 13123, 311168, 402836), c('FigR', 'CellOracle', 'GRaNIE', 'SCENIC+'))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Number_of_links_V2.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('Number of links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale+scale_y_continuous(label=scientific_10)
+dev.off()
+```
+# Get Stats
+
+```{r}
+hic_files <- c('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/IMR90_ENCFF685BLG_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GM12878_ENCFF053VBX_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HCT116_ENCFF750AOC_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HepG2_ENCFF020DPP_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/K562_ENCFF080DPJ_5Kb_SCALE.txt')
+names(hic_files) <- c('IMR90', 'GM12878', 'HCT116', 'HepG2', 'K562')
+
+plot_list_1 <- list()
+plot_list_2 <- list()
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'deeppink')
+names(myColors) <- c('SCENIC+_Rho', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+all_mes <- list()
+#name <- names(hic_files)[2]
+for (name in names(hic_files)){
+  print(name)
+  hic_file <- hic_files[name]
+  degs_file <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus/DEGs/', name, '.tsv')
+  hic_data <- read.table(hic_file, header=T)
+  hic_data$name <- paste0(hic_data$Region_id, '_',  hic_data$Gene)
+  hic_data <- hic_data[,c('name', 'Score', 'Distance_to_gene')]
+  
+  # Load links from SCENIC+
+  grnboost_data <- scenicplus
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  
+  # Load links from figr
+  figr_data <- figr
+  print(paste0('Number of links in FigR data: ', nrow(figr_data)))
+  colnames(figr_data) <-  paste0('FigR_', colnames(figr_data))
+  figr_data$name <- paste0(figr_data$FigR_PeakRanges, '_',figr_data$FigR_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% figr_data$name),]
+  figr_data <- figr_data[which(figr_data$name %in% hic_data_x$name),]
+  figr_df <- merge(hic_data_x, figr_data, by='name', all=TRUE) 
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  
+  # Load links form celloracle
+  celloracle_data <- celloracle
+  print(paste0('Number of links in CellOracle data: ',nrow(celloracle_data)))
+  colnames(celloracle_data) <-  paste0('CellOracle_', colnames(celloracle_data))
+  chr <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 1)
+  start <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 2)
+  end <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 3)
+  celloracle_data$CellOracle_Region <- paste0(chr, ':', start, '-', end)
+  celloracle_data$name <- paste0(celloracle_data$CellOracle_Region, '_',celloracle_data$CellOracle_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% celloracle_data$name),]
+  celloracle_data <- celloracle_data[which(celloracle_data$name %in% hic_data_x$name),]
+  celloracle_df <- merge(hic_data_x, celloracle_data, by='name', all=TRUE) 
+  print(paste0('Number of links in CellOracle data after filtering: ', nrow(celloracle_df)))
+  
+  # Load links from granie
+  granie_data <- granie
+  print(paste0('Number of links in GRaNIE data: ',nrow(granie_data)))
+  colnames(granie_data) <-  paste0('GRaNIE_', colnames(granie_data))
+  granie_data$name <- paste0(granie_data$GRaNIE_peak.ID, '_',granie_data$GRaNIE_gene.ENSEMBL)
+  hic_data_x <- hic_data[which(hic_data$name %in% granie_data$name),]
+  granie_data <- granie_data[which(granie_data$name %in% hic_data_x$name),]
+  granie_df <- merge(hic_data_x, granie_data, by='name', all=TRUE) 
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  
+  degs <- read.delim(degs_file)
+  #genes <- as.vector(unlist(degs[which(degs$Log2FC > 5), 1]))
+  genes <- as.vector(unlist(degs[1:100, 1]))
+  scenic_df <- scenic_df[which(scenic_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  figr_df <- figr_df[which(figr_df$FigR_Gene %in% genes),]
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  granie_df <- granie_df[which(granie_df$GRaNIE_gene.ENSEMBL %in% genes),]
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  celloracle_df <- celloracle_df[which(celloracle_df$CellOracle_Gene %in% genes),]
+  print(paste0('Number of links in CellOracle data after filtering: ',nrow(celloracle_df)))
+  df_list_scenic <- split(scenic_df, f = scenic_df$GBM_target)
+  df_list_figr <- split(figr_df, f = figr_df$FigR_Gene)
+  df_list_granie <- split(granie_df, f = granie_df$GRaNIE_gene.ENSEMBL)
+  df_list_celloracle <- split(celloracle_df, f = celloracle_df$CellOracle_Gene)
+  measurements <- list()
+  
+  measurements[['SCENIC+_Rho']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_Importance']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['FigR']] <- unlist(llply(df_list_figr, function(x) cor(x[,'Score'], x[,'FigR_rObs'], method='spearman')))
+  measurements[['CellOracle']] <- unlist(llply(df_list_celloracle, function(x) cor(x[,'Score'], abs(x[,'CellOracle_coaccess']), method='spearman')))
+  measurements[['GRaNIE']] <- unlist(llply(df_list_granie, function(x) cor(x[,'Score'], abs(x[,"GRaNIE_peak_gene.r"]), method='spearman')))
+  measurements[['Random']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], sample(x[,'GBM_importance']), method='spearman')))
+  
+  # Perorm pairwise comparisons
+  library(ggpubr)
+  d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+  d <- d[complete.cases(d),]
+  compare_means(x ~ grp,  data = d, ref.group = "Random")
+  all_mes[[name]] <- measurements
+  
+  # Visualize: Specify the comparisons you want
+  plot_list_1[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_violin() + geom_boxplot(width=0.1, color="grey", alpha=0.2) + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random")  + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+
+  plot_list_2[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+}
+```
+```{r}
+ggarrange(plot_list_1[[1]], plot_list_1[[2]], plot_list_1[[3]], plot_list_1[[4]], plot_list_1[[5]],
+          ncol = 3, nrow = 2)
+saveRDS(plot_list_1, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_1_V2_allscenic.RDS')
+```
+
+```{r}
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/GM12878_hic_boxplot.pdf')
+plot_list_2[[2]]
+dev.off()
+```
+```{r}
+#Create a custom color scale
+plot_list_2 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_2_V2_allscenic.RDS')
+ggarrange(plot_list_2[[1]], plot_list_2[[2]], plot_list_2[[3]], plot_list_2[[4]], plot_list_2[[5]],
+          ncol = 3, nrow = 2)
+#saveRDS(plot_list_2, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_2_V2_allscenic.RDS')
+```
+```{r}
+#Create a custom color scale
+plot_list_2 <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_2_V2.RDS')
+ggarrange(plot_list_2[[1]], plot_list_2[[2]], plot_list_2[[3]], plot_list_2[[4]], plot_list_2[[5]],
+          ncol = 3, nrow = 2)
+#saveRDS(plot_list_2, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/HiC_plot_list_2_V2_allscenic.RDS')
+```
+
+```{r}
+#saveRDS(all_mes, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/all_mes_V2.RDS')
+all_mes <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/all_mes_V2.RDS')
+measurements <- list()
+names <- c("SCENIC+_Rho", "SCENIC+_Importance", "FigR", "CellOracle", "GRaNIE", "Random")
+
+for (name in names){
+  measurements[[name]] <- NULL
+}
+
+for (name1 in names(all_mes)){
+  x <- all_mes[[name1]]
+  for (name2 in names(x)){
+    measurements[[name2]] <- c(measurements[[name2]], x[[name2]])
+  }
+}
+
+  # Perorm pairwise comparisons
+  library(ggpubr)
+  d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+  d <- d[complete.cases(d),]
+  compare_means(x ~ grp,  data = d, ref.group = "Random")
+  
+# Visualize: Specify the comparisons you want
+ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_violin() + geom_boxplot(width=0.1, color="grey", alpha=0.2) + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random")  + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/boxplot_figure_with_random.pdf')
+ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+
+d <- d[-which(d$grp == 'Random'),]
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/boxplot_figure_no_random_reverse.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+```
+
+
+# Create region eRegulons
+
+- SCENIC+
+
+cd /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost
+grep -v "\\-_\\-" eRegulons.bed | grep -v "\\+_\\-" | cut -d "_" -f1,2 | sort -k1,1 -k2,2n > /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/SCENIC+_simplified_eRegulons_autoreg.bed
+
+cd /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/
+grep -v "\\-_\\-" eRegulons.bed | grep -v "\\+_\\-" | cut -d "_" -f1,2 | sort -k1,1 -k2,2n > /staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/SCENIC+_simplified_eRegulons.bed
+
+- Pando
+
+```{r}
+pando <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/modules_pando.tsv')
+pando$Chromosome <- sapply(strsplit(pando$regions, split = "-"), "[", 1)
+pando$Start <- sapply(strsplit(pando$regions, split = "-"), "[", 2)
+pando$End <- sapply(strsplit(pando$regions, split = "-"), "[", 3)
+pando_pos <- pando[which(pando$estimate>0),c('Chromosome', 'Start', 'End', 'tf')]
+pando_pos$tf <- paste0(pando_pos$tf, '_+')
+pando_neg <- pando[which(pando$estimate<0),c('Chromosome', 'Start', 'End', 'tf')]
+pando_neg$tf <- paste0(pando_neg$tf, '_-')
+comb <- rbind(pando_pos, pando_neg)
+comb <- comb[!duplicated(comb),]
+write.table(comb, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/Pando_eRegulons.bed', sep='\t', col.names=FALSE, row.names = FALSE, quote=FALSE)
+
+# Intersect with consensus peaks
+consensus_peaks <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/MACS_ATAC/iterative/peak_filtering_norm/combined_summits_final.bed')[,c(1:3)]
+colnames(comb) <- c('seqnames','start','end', 'Name')
+comb <- comb[complete.cases(comb),]
+s <- makeGRangesFromDataFrame(comb, keep.extra.columns = T)
+colnames(consensus_peaks) <- c('seqnames','start','end')
+t <- makeGRangesFromDataFrame(consensus_peaks, keep.extra.columns = T)
+m <- findOverlaps(s, t)
+# Add gc.name to subject GRanges (i.e. left join)
+comb_2 <- cbind(as.data.frame(s[queryHits(m),] ,row.names=NULL), as.data.frame(t[subjectHits(m),], row.names=NULL))
+comb_2 <- comb_2[,c(7,8,9,6)]
+write.table(comb_2, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/Pando_eRegulons_consensus.bed', sep='\t', col.names=FALSE, row.names = FALSE, quote=FALSE)
+```
+
+
+sort -k1,1 -k2,2n Pando_eRegulons.bed | grep -v ';' > Pando_eRegulons_sort.bed
+mv Pando_eRegulons_sort.bed Pando_eRegulons.bed
+
+sort -k1,1 -k2,2n Pando_eRegulons_consensus.bed | grep -v ';' > Pando_eRegulons_consensus_sort.bed
+mv Pando_eRegulons_consensus_sort.bed Pando_eRegulons_consensus.bed
+
+- CellOracle
+
+```{r}
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+celloracle$Chromosome <- sapply(strsplit(celloracle$Region, split = "_"), "[", 1)
+celloracle$Start <- sapply(strsplit(celloracle$Region, split = "_"), "[", 2)
+celloracle$End <- sapply(strsplit(celloracle$Region, split = "_"), "[", 3)
+celloracle_pos <- celloracle[which(celloracle$coef_mean>0),c('Chromosome', 'Start', 'End', 'TF')]
+celloracle_pos$TF <- paste0(celloracle_pos$TF, '_+')
+celloracle_neg <- celloracle[which(celloracle$coef_mean<0),c('Chromosome', 'Start', 'End', 'TF')]
+celloracle_neg$TF <- paste0(celloracle_neg$TF, '_-')
+comb <- rbind(celloracle_pos, celloracle_neg)
+comb <- comb[!duplicated(comb),]
+write.table(comb, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/celloracle_eRegulons.bed', sep='\t', col.names=FALSE, row.names = FALSE, quote=FALSE)
+```
+
+sort -k1,1 -k2,2n celloracle_eRegulons.bed > celloracle_eRegulons_sort.bed
+mv celloracle_eRegulons_sort.bed celloracle_eRegulons.bed
+
+- GRaNIE
+
+```{r}
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+granie <- as.data.frame(granie)
+granie$peak.ID <- as.vector(unlist(granie$peak.ID))
+granie$Chromosome <- sapply(strsplit(granie$peak.ID, split = ":"), "[", 1)
+coord <- sapply(strsplit(granie$peak.ID, split = ":"), "[", 2)
+granie$Start <- sapply(strsplit(coord, split = "-"), "[", 1)
+granie$End <- sapply(strsplit(coord, split = "-"), "[", 2)
+granie_pos <- granie[which(granie$TF_peak.fdr_direction == 'pos'), c('Chromosome', 'Start', 'End', 'TF.ENSEMBL')]
+granie_pos$TF.ENSEMBL <- paste0(granie_pos$TF.ENSEMBL, '_+')
+granie_neg <- granie[which(granie$TF_peak.fdr_direction == 'neg'), c('Chromosome', 'Start', 'End', 'TF.ENSEMBL')]
+granie_neg$TF.ENSEMBL <- paste0(granie_neg$TF.ENSEMBL, '_-')
+comb <- rbind(granie_pos, granie_neg)
+comb <- comb[!duplicated(comb),]
+write.table(comb, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/regulons_bed/GRaNIE_eRegulons.bed', sep='\t', col.names=FALSE, row.names = FALSE, quote=FALSE)
+```
+
+sort -k1,1 -k2,2n GRaNIE_eRegulons.bed > GRaNIE_eRegulons_sort.bed
+mv GRaNIE_eRegulons_sort.bed GRaNIE_eRegulons.bed
+
+for file in *
+do
+  name="${file%.bed}"
+  /data/leuven/software/biomed/haswell_centos7/2018a/software/Kent_tools/20190730-linux.x86_64/bin/bedToBigBed ${name}.bed https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.chrom.sizes ${name}.bb
+done
+
+/data/leuven/software/biomed/haswell_centos7/2018a/software/Kent_tools/20190730-linux.x86_64/bin/bedToBigBed SCENIC+_simplified_eRegulons.bed https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.chrom.sizes SCENIC+_simplified_eRegulons.bb
+
+# Make example with signac
+
+```{r}
+signac_obj <- readRDS('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/Pando/outs/seurat_obj.rds')
+```
+
+```{r}
+library(GenomicRanges)
+links_list <- list()
+selected_regions <- c('chr20:44351995-44352496', 'chr20:44355433-44355934', 'chr20:44370590-44371091', 'chr20:44384369-44384870', 'chr20:44393042-44393543', 'chr20:44394520-44395021', 'chr20:44401040-44401541', 'chr20:44402435-44402936', 'chr20:44411128-44411629', 'chr20:44414736-44415237', 'chr20:44419212-44419713', 'chr20:44428436-44428937', 'chr20:44434074-44434575')
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/'
+files <- list.files(path)[c(1,2,4,6,9,11)]
+for (file in files){
+  dt <- read.delim(paste0(path, file))
+  dt <- dt[which(dt$Gene == 'HNF4A'),]
+  colnames(dt) <- c('seqnames', 'start', 'end', 'gene', 'score', 'tss', 'st', 'distance', 'region_id')
+  dt <- dt[which(dt$region_id %in% selected_regions), ]
+  dt$start <- dt$start+250
+  dt$end <- dt$end-250
+  for (i in 1:nrow(dt)){
+    if (dt[i, 'tss'] > dt[i, 'start']){
+      dt[i, 'end'] <- dt[i, 'tss']
+    } else {
+      dt[i, 'start'] <- dt[i, 'tss']
+    }
+  }
+  gr <- makeGRangesFromDataFrame(dt, keep.extra.columns = TRUE)
+  name <- gsub('.txt', '', file)
+  links_list[[name]] <- gr
+}
+```
+
+```{r}
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+gene <- 'HNF4A'
+region <- 'chr20-44344732-44438920'
+obj_list <- list()
+for (name in names(links_list)){
+  obj_list[[name]] <- signac_obj 
+  DefaultAssay(obj_list[[name]]) <- "ATAC"
+  Links(obj_list[[name]]) <- links_list[[name]]
+}
+# Color
+library(RColorBrewer)
+colvar <- brewer.pal(8, 'Set1')
+names(colvar) <- sort(unique(signac_obj$orig.ident))
+colvar['MCF7'] <- '#ccc833'
+
+# Coverage
+cov_plot <- CoveragePlot(
+  object = obj_list[[1]],
+  region = region,
+  features = gene, 
+  group.by = 'orig.ident',
+  annotation = FALSE,
+  peaks = FALSE,
+  links=FALSE,
+)  & scale_fill_manual(values=colvar)
+# Annotation
+gene_plot <- AnnotationPlot(
+  object = obj_list[[1]],
+  region = region
+)
+# Links
+link_plot_1 <- LinkPlot(
+  object = obj_list[["HepG2_ENCFF020DPP_5Kb_SCALE"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Greys"), limits=c(500, NA))  # + scale_y_reverse()
+link_plot_2 <- LinkPlot(
+  object = obj_list[["Scenicplus-rho_links_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Reds"), limits=c(0, NA))  # + scale_y_reverse()
+link_plot_3 <- LinkPlot(
+  object = obj_list[["Scenicplus-importance_links_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Blues"), limits=c(0, NA)) 
+link_plot_4 <- LinkPlot(
+  object = obj_list[["GRaNIE_links_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Oranges"), limits=c(0, NA)) 
+link_plot_5 <- LinkPlot(
+  object = obj_list[["FigR_links"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Purples"), limits=c(0, NA)) 
+link_plot_6 <- LinkPlot(
+  object = obj_list[["CellOracle_links_2K_all"]],
+  region = region,
+  min.cutoff = -1
+)  + scale_colour_gradientn(colours = brewer.pal(n = 9, name = "Greens"), limits=c(0, NA)) 
+# Expression
+expr.plot <- ExpressionPlot(obj_list[[1]], features = gene, assay = "RNA", group.by = 'orig.ident') & scale_fill_manual(values=colvar)
+library(patchwork)
+p <- CombineTracks(
+  plotlist = list( cov_plot, link_plot_1, link_plot_2, link_plot_3, link_plot_4, link_plot_5, link_plot_6, gene_plot),
+  expression.plot = expr.plot,
+  heights = c(5, 2, 2, 2, 2,2,2,2),
+  widths = c(10,1)
+)
+p
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Hic_example.pdf')
+p
+dev.off()
+```
+```{r}
+library(GenomicRanges)
+links_list <- list()
+path <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/'
+files <- list.files(path)[c(1,2,4,6,9,11)]
+for (file in files){
+  dt <- read.delim(paste0(path, file))
+  dt <- dt[which(dt$Gene == 'HNF4A'),]
+  colnames(dt) <- c('seqnames', 'start', 'end', 'gene', 'score', 'tss', 'st', 'distance', 'region_id')
+  dt$start <- dt$start+250
+  dt$end <- dt$end-250
+  for (i in 1:nrow(dt)){
+    if (dt[i, 'tss'] > dt[i, 'start']){
+      dt[i, 'end'] <- dt[i, 'tss']
+    } else {
+      dt[i, 'start'] <- dt[i, 'tss']
+    }
+  }
+  gr <- makeGRangesFromDataFrame(dt, keep.extra.columns = TRUE)
+  name <- gsub('.txt', '', file)
+  links_list[[name]] <- gr
+}
+```
+
+
+```{r}
+x <- links_list[['HepG2_ENCFF020DPP_5Kb_SCALE']]
+sc <- as.vector(unlist(x$score))
+names(sc) <- as.vector(unlist(x$region_id))
+
+for (name in names(links_list)){
+  print(name)
+  y <- links_list[[name]]
+  sc_2 <- as.vector(unlist(y$score))
+  names(sc_2) <- as.vector(unlist(y$region_id))
+  y <- sc_2[which(names(sc_2) %in% names(sc))]
+  x <- sc[names(y)]
+  
+  print(cor(x,y))
+}
+```
+
+# Showing ALL options
+
+```{r}
+library(dplyr)
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+dim(figr)
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+TFenrich.d  <- TFenrich.d %>% filter(abs(Score) > 0.5)
+figr_grn <- figr[which(figr$Gene %in% TFenrich.d$DORC),]
+dim(figr_grn)
+# Celloracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+celloracle <- celloracle[,c('Gene', 'Region', 'coaccess')]
+celloracle <- celloracle[which(celloracle$coaccess > 0),]
+celloracle <- celloracle[!duplicated(celloracle),]
+dim(celloracle)
+celloracle_grn <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+celloracle_grn <- celloracle_grn[,c('Gene', 'Region', 'coaccess')]
+celloracle_grn <- celloracle_grn[which(celloracle_grn$coaccess > 0),]
+celloracle_grn <- celloracle_grn[!duplicated(celloracle_grn),]
+dim(celloracle_grn)
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.peak_to_gene.RDS')
+granie <- as.data.frame(granie)
+granie <- granie[which(granie$peak_gene.r > 0),]
+granie <- granie[which(granie$padj<0.2),]
+granie$gene.ENSEMBL <- as.vector(unlist(granie$gene.ENSEMBL))
+granie$peak.ID <- as.vector(unlist(granie$peak.ID))
+dim(granie)
+# GRanie
+granie_grn <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+granie_grn <- as.data.frame(granie_grn)
+granie_grn$gene.ENSEMBL <- as.vector(unlist(granie_grn$gene.ENSEMBL))
+granie_grn$peak.ID <- as.vector(unlist(granie_grn$peak.ID))
+granie_grn <- granie_grn[,c('gene.ENSEMBL', 'peak.ID', 'peak_gene.r')]
+granie_grn <- granie_grn[!duplicated(granie_grn),]
+granie_grn <- as.data.frame(granie_grn)
+granie_grn$gene.ENSEMBL <- as.vector(unlist(granie_grn$gene.ENSEMBL))
+granie_grn$peak.ID <- as.vector(unlist(granie_grn$peak.ID))
+granie_grn <- granie_grn[!duplicated(granie_grn),]
+dim(granie_grn)
+# SCENIC+
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+#scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+dim(scenicplus)
+```
+
+```{r}
+scientific_10 <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'orange', "#4DAF4A", "orange", "#984EA3")
+names(myColors) <- c('SCENIC+', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE', 'CellOracle (GRN)', 'GRaNIE (GRN)', 'FigR (GRN)')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data <- cbind(c(66024, 35584, 13123, 3112, 311168, 24274, 402836), c('FigR', 'FigR (GRN)', 'CellOracle', 'CellOracle (GRN)', 'GRaNIE', 'GRaNIE (GRN)', 'SCENIC+'))
+colnames(data) <- c('value', 'Method')
+data <- as.data.frame(data)
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Number_of_links_all_methods_V2.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('Number of links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale+scale_y_continuous(label=scientific_10)
+dev.off()
+```
+# Get Stats
+
+```{r}
+library(plyr)
+hic_files <- c('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/IMR90_ENCFF685BLG_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/GM12878_ENCFF053VBX_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HCT116_ENCFF750AOC_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/HepG2_ENCFF020DPP_5Kb_SCALE.txt',
+                   '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/HiC/formatted/K562_ENCFF080DPJ_5Kb_SCALE.txt')
+names(hic_files) <- c('IMR90', 'GM12878', 'HCT116', 'HepG2', 'K562')
+
+plot_list_1 <- list()
+plot_list_2 <- list()
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'orange', "#4DAF4A", "orange", "#984EA3")
+names(myColors) <- c('SCENIC+', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE', 'CellOracle (GRN)', 'GRaNIE (GRN)', 'FigR (GRN)')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+all_mes <- list()
+name <- names(hic_files)[4]
+for (name in names(hic_files)){
+  print(name)
+  hic_file <- hic_files[name]
+  degs_file <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus/DEGs/', name, '.tsv')
+  hic_data <- read.table(hic_file, header=T)
+  hic_data$name <- paste0(hic_data$Region_id, '_',  hic_data$Gene)
+  hic_data <- hic_data[,c('name', 'Score', 'Distance_to_gene')]
+  
+  # Load links from SCENIC+
+  grnboost_data <- scenicplus
+  print(paste0('Number of links in  SCENIC+ data: ',nrow(grnboost_data)))
+  colnames(grnboost_data) <-  paste0('GBM_', colnames(grnboost_data))
+  grnboost_data$name <- paste0(grnboost_data$GBM_region, '_',grnboost_data$GBM_target)
+  hic_data_x <- hic_data[which(hic_data$name %in% grnboost_data$name),]
+  grnboost_data <- grnboost_data[which(grnboost_data$name %in% hic_data_x$name),]
+  scenic_df <- merge(hic_data_x, grnboost_data, by='name', all=TRUE) 
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  
+  # Load links from figr
+  figr_data <- figr
+  print(paste0('Number of links in FigR data: ', nrow(figr_data)))
+  colnames(figr_data) <-  paste0('FigR_', colnames(figr_data))
+  figr_data$name <- paste0(figr_data$FigR_PeakRanges, '_',figr_data$FigR_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% figr_data$name),]
+  figr_data <- figr_data[which(figr_data$name %in% hic_data_x$name),]
+  figr_df <- merge(hic_data_x, figr_data, by='name', all=TRUE) 
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  
+   # Load links from figr
+  figr_grn_data <- figr_grn
+  print(paste0('Number of links in FigR data: ', nrow(figr_grn_data)))
+  colnames(figr_grn_data) <-  paste0('FigR_', colnames(figr_grn_data))
+  figr_grn_data$name <- paste0(figr_grn_data$FigR_PeakRanges, '_',figr_grn_data$FigR_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% figr_grn_data$name),]
+  figr_grn_data <- figr_grn_data[which(figr_grn_data$name %in% hic_data_x$name),]
+  figr_grn_df <- merge(hic_data_x, figr_grn_data, by='name', all=TRUE) 
+  print(paste0('Number of links in FigR_grn data after filtering: ',nrow(figr_grn_df)))
+  
+  # Load links form celloracle
+  celloracle_data <- celloracle
+  print(paste0('Number of links in CellOracle data: ',nrow(celloracle_data)))
+  colnames(celloracle_data) <-  paste0('CellOracle_', colnames(celloracle_data))
+  chr <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 1)
+  start <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 2)
+  end <- sapply(strsplit(celloracle_data$CellOracle_Region, split = "_"), "[", 3)
+  celloracle_data$CellOracle_Region <- paste0(chr, ':', start, '-', end)
+  celloracle_data$name <- paste0(celloracle_data$CellOracle_Region, '_',celloracle_data$CellOracle_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% celloracle_data$name),]
+  celloracle_data <- celloracle_data[which(celloracle_data$name %in% hic_data_x$name),]
+  celloracle_df <- merge(hic_data_x, celloracle_data, by='name', all=TRUE) 
+  print(paste0('Number of links in CellOracle data after filtering: ', nrow(celloracle_df)))
+  
+  # Load links form celloracle
+  celloracle_grn_data <- celloracle_grn
+  print(paste0('Number of links in celloracle_grn data: ',nrow(celloracle_grn_data)))
+  colnames(celloracle_grn_data) <-  paste0('CellOracle_', colnames(celloracle_grn_data))
+  chr <- sapply(strsplit(celloracle_grn_data$CellOracle_Region, split = "_"), "[", 1)
+  start <- sapply(strsplit(celloracle_grn_data$CellOracle_Region, split = "_"), "[", 2)
+  end <- sapply(strsplit(celloracle_grn_data$CellOracle_Region, split = "_"), "[", 3)
+  celloracle_grn_data$CellOracle_Region <- paste0(chr, ':', start, '-', end)
+  celloracle_grn_data$name <- paste0(celloracle_grn_data$CellOracle_Region, '_',celloracle_grn_data$CellOracle_Gene)
+  hic_data_x <- hic_data[which(hic_data$name %in% celloracle_grn_data$name),]
+  celloracle_grn_data <- celloracle_grn_data[which(celloracle_grn_data$name %in% hic_data_x$name),]
+  celloracle_grn_df <- merge(hic_data_x, celloracle_grn_data, by='name', all=TRUE) 
+  print(paste0('Number of links in celloracle_grn data after filtering: ', nrow(celloracle_grn_df)))
+  
+  # Load links from granie
+  granie_data <- granie
+  print(paste0('Number of links in GRaNIE data: ',nrow(granie_data)))
+  colnames(granie_data) <-  paste0('GRaNIE_', colnames(granie_data))
+  granie_data$name <- paste0(granie_data$GRaNIE_peak.ID, '_',granie_data$GRaNIE_gene.ENSEMBL)
+  hic_data_x <- hic_data[which(hic_data$name %in% granie_data$name),]
+  granie_data <- granie_data[which(granie_data$name %in% hic_data_x$name),]
+  granie_df <- merge(hic_data_x, granie_data, by='name', all=TRUE) 
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  
+  # Load links from granie_grn
+  granie_grn_data <- granie_grn
+  print(paste0('Number of links in granie_grn data: ',nrow(granie_grn_data)))
+  colnames(granie_grn_data) <-  paste0('GRaNIE_', colnames(granie_grn_data))
+  granie_grn_data$name <- paste0(granie_grn_data$GRaNIE_peak.ID, '_',granie_grn_data$GRaNIE_gene.ENSEMBL)
+  hic_data_x <- hic_data[which(hic_data$name %in% granie_grn_data$name),]
+  granie_grn_data <- granie_grn_data[which(granie_grn_data$name %in% hic_data_x$name),]
+  granie_grn_df <- merge(hic_data_x, granie_grn_data, by='name', all=TRUE) 
+  print(paste0('Number of links in granie_grn data after filtering: ',nrow(granie_grn_df)))
+  
+  degs <- read.delim(degs_file)
+  #genes <- as.vector(unlist(degs[which(degs$Log2FC > 5), 1]))
+  genes <- as.vector(unlist(degs[1:100, 1]))
+  scenic_df <- scenic_df[which(scenic_df$GBM_target %in% genes),]
+  print(paste0('Number of links in SCENIC+ data after filtering: ',nrow(scenic_df)))
+  figr_df <- figr_df[which(figr_df$FigR_Gene %in% genes),]
+  print(paste0('Number of links in FigR data after filtering: ',nrow(figr_df)))
+  figr_grn_df <- figr_grn_df[which(figr_grn_df$FigR_Gene %in% genes),]
+  print(paste0('Number of links in FigR_grn data after filtering: ',nrow(figr_grn_df)))
+  granie_df <- granie_df[which(granie_df$GRaNIE_gene.ENSEMBL %in% genes),]
+  print(paste0('Number of links in GRaNIE data after filtering: ',nrow(granie_df)))
+  granie_grn_df <- granie_grn_df[which(granie_grn_df$GRaNIE_gene.ENSEMBL %in% genes),]
+  print(paste0('Number of links in GRaNIE_grn data after filtering: ',nrow(granie_grn_df)))
+  celloracle_df <- celloracle_df[which(celloracle_df$CellOracle_Gene %in% genes),]
+  print(paste0('Number of links in CellOracle data after filtering: ',nrow(celloracle_df)))
+  celloracle_grn_df <- celloracle_grn_df[which(celloracle_grn_df$CellOracle_Gene %in% genes),]
+  print(paste0('Number of links in CellOracle_grn data after filtering: ',nrow(celloracle_grn_df)))
+  df_list_scenic <- split(scenic_df, f = scenic_df$GBM_target)
+  df_list_scenic <- df_list_scenic[sapply(df_list_scenic, nrow) >2]
+  df_list_figr <- split(figr_df, f = figr_df$FigR_Gene)
+  df_list_figr <- df_list_figr[sapply(df_list_figr, nrow) >2]
+  df_list_figr_grn <- split(figr_grn_df, f = figr_grn_df$FigR_Gene)
+  df_list_figr_grn <- df_list_figr_grn[sapply(df_list_figr_grn, nrow) >2]
+  df_list_granie <- split(granie_df, f = granie_df$GRaNIE_gene.ENSEMBL)
+  df_list_granie <- df_list_granie[sapply(df_list_granie, nrow) >2]
+  df_list_granie_grn <- split(granie_grn_df, f = granie_grn_df$GRaNIE_gene.ENSEMBL)
+  df_list_granie_grn <- df_list_granie_grn[sapply(df_list_granie_grn, nrow) >2]
+  df_list_celloracle <- split(celloracle_df, f = celloracle_df$CellOracle_Gene)
+  df_list_celloracle <- df_list_celloracle[sapply(df_list_celloracle, nrow) >2]
+  df_list_celloracle_grn <- split(celloracle_grn_df, f = celloracle_grn_df$CellOracle_Gene)
+  df_list_celloracle_grn <- df_list_celloracle_grn[sapply(df_list_celloracle_grn, nrow) >2]
+  measurements <- list()
+  
+  measurements[['SCENIC+_Rho']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_rho'], method='spearman')))
+  measurements[['SCENIC+_Importance']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], x[,'GBM_importance'], method='spearman')))
+  measurements[['FigR']] <- unlist(llply(df_list_figr, function(x) cor(x[,'Score'], x[,'FigR_rObs'], method='spearman')))
+  measurements[['FigR (GRN)']] <- unlist(llply(df_list_figr_grn, function(x) cor(x[,'Score'], x[,'FigR_rObs'], method='spearman')))
+  measurements[['CellOracle']] <- unlist(llply(df_list_celloracle, function(x) cor(x[,'Score'], abs(x[,'CellOracle_coaccess']), method='spearman')))
+    measurements[['CellOracle (GRN)']] <- unlist(llply(df_list_celloracle_grn, function(x) cor(x[,'Score'], abs(x[,'CellOracle_coaccess']), method='spearman')))
+  measurements[['GRaNIE']] <- unlist(llply(df_list_granie, function(x) cor(x[,'Score'], abs(x[,"GRaNIE_peak_gene.r"]), method='spearman')))
+  measurements[['GRaNIE (GRN)']] <- unlist(llply(df_list_granie_grn, function(x) cor(x[,'Score'], abs(x[,"GRaNIE_peak_gene.r"]), method='spearman')))
+  measurements[['Random']] <- unlist(llply(df_list_scenic, function(x) cor(x[,'Score'], sample(x[,'GBM_importance']), method='spearman')))
+  
+  # Perorm pairwise comparisons
+  library(ggpubr)
+  d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+  d <- d[complete.cases(d),]
+  compare_means(x ~ grp,  data = d, ref.group = "Random")
+  all_mes[[name]] <- measurements
+  
+  # Visualize: Specify the comparisons you want
+  plot_list_1[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_violin() + geom_boxplot(width=0.1, color="grey", alpha=0.2) + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random")  + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+
+  plot_list_2[[name]] <- ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+}
+```
+
+```{r}
+ggarrange(plot_list_2[[1]], plot_list_2[[2]], plot_list_2[[3]], plot_list_2[[4]], plot_list_2[[5]],
+          ncol = 3, nrow = 2)
+```
+
+```{r}
+saveRDS(all_mes, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/all_mes_all_V2.RDS')
+all_mes <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/all_mes_all_V2.RDS')
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'orange', "#4DAF4A", "orange", "#984EA3")
+names(myColors) <- c('SCENIC+_Rho', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE', 'CellOracle (GRN)', 'GRaNIE (GRN)', 'FigR (GRN)')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+
+measurements <- list()
+names <-  c('SCENIC+_Rho', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE', 'CellOracle (GRN)', 'GRaNIE (GRN)')
+
+for (name in names){
+  measurements[[name]] <- NULL
+}
+
+for (name1 in names(all_mes)){
+  x <- all_mes[[name1]]
+  for (name2 in names(x)){
+    if (sum(!is.na(x[[name2]])) > 40){
+      measurements[[name2]] <- c(measurements[[name2]], x[[name2]])
+    }
+  }
+}
+
+  # Perorm pairwise comparisons
+  library(ggpubr)
+  d <- data.frame(x = unlist(measurements), 
+                  grp = rep(names(measurements)[1:length(measurements)],times = sapply(measurements,length)))
+  d <- d[complete.cases(d),]
+  compare_means(x ~ grp,  data = d, ref.group = "Random")
+  
+# Visualize: Specify the comparisons you want
+ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_violin() + geom_boxplot(width=0.1, color="grey", alpha=0.2) + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random")  + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/boxplot_figure_with_random_all_V2.pdf')
+ggplot(d,aes(x = reorder(grp, x, FUN = median), y = x, fill=reorder(grp, x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + stat_compare_means(label = "p.signif", method = "wilcox.test", ref.group = "Random") + ggtitle(name) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+
+d <- d[-which(d$grp == 'Random'),]
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/boxplot_figure_no_random_reverse_all_V2.pdf')
+ggplot(d,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + geom_hline(yintercept=median(measurements[['Random']], na.rm=T), linetype="dashed", color = "grey") + colScale
+dev.off()
+```
+
+# Number of links per gene per method
+
+```{r}
+nr_links_per_gene <- list()
+method_list <- list()
+library(dplyr)
+# FigR
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/int/1_cisCor.RData")
+figr <- cisCor %>% filter(pvalZ <= 0.05)
+figr <- figr[which(figr$rObs > 0),]
+nr_links_per_gene[['FigR']] <- table(figr$Gene)
+method_list[['FigR']] <- rep('FigR', length(table(figr$Gene)))
+dim(figr)
+load("/lustre1/project/stg_00002/lcb/saibar/Projects/SCENICplus/FigR_encode/analysis/TFenrich.d.RData")
+TFenrich.d  <- TFenrich.d %>% filter(abs(Score) > 0.5)
+figr_grn <- figr[which(figr$Gene %in% TFenrich.d$DORC),]
+nr_links_per_gene[['FigR (GRN)']] <- table(figr_grn$Gene)
+method_list[['FigR (GRN)']] <- rep('FigR (GRN)', length(table(figr_grn$Gene)))
+dim(figr_grn)
+# Celloracle
+celloracle <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K_all.RDS')
+celloracle <- celloracle[,c('Gene', 'Region', 'coaccess')]
+celloracle <- celloracle[which(celloracle$coaccess > 0.8),]
+celloracle <- celloracle[!duplicated(celloracle),]
+nr_links_per_gene[['CellOracle']] <- table(celloracle$Gene)
+method_list[['CellOracle']] <- rep('CellOracle', length(table(celloracle$Gene)))
+dim(celloracle)
+celloracle_grn <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/CellOracle_combined_2K.RDS')
+celloracle_grn <- celloracle_grn[,c('Gene', 'Region', 'coaccess')]
+celloracle_grn <- celloracle_grn[which(celloracle_grn$coaccess > 0),]
+celloracle_grn <- celloracle_grn[!duplicated(celloracle_grn),]
+nr_links_per_gene[['CellOracle (GRN)']] <- table(celloracle_grn$Gene)
+method_list[['CellOracle (GRN)']] <- rep('CellOracle (GRN)', length(table(celloracle_grn$Gene)))
+dim(celloracle_grn)
+# GRanie
+granie <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.peak_to_gene.RDS')
+granie <- as.data.frame(granie)
+granie <- granie[which(granie$peak_gene.r > 0),]
+granie <- granie[which(granie$padj<0.2),]
+granie$gene.ENSEMBL <- as.vector(unlist(granie$gene.ENSEMBL))
+granie$peak.ID <- as.vector(unlist(granie$peak.ID))
+nr_links_per_gene[['GRaNIE']] <- table(granie$gene.ENSEMBL)
+method_list[['GRaNIE']] <- rep('GRaNIE', length(table(granie$gene.ENSEMBL)))
+dim(granie)
+# GRanie
+granie_grn <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/Granie/GRN_connections.all.single_cell.RDS')
+granie_grn <- as.data.frame(granie_grn)
+granie_grn$gene.ENSEMBL <- as.vector(unlist(granie_grn$gene.ENSEMBL))
+granie_grn$peak.ID <- as.vector(unlist(granie_grn$peak.ID))
+granie_grn <- granie_grn[,c('gene.ENSEMBL', 'peak.ID', 'peak_gene.r')]
+granie_grn <- granie_grn[!duplicated(granie_grn),]
+granie_grn <- as.data.frame(granie_grn)
+granie_grn$gene.ENSEMBL <- as.vector(unlist(granie_grn$gene.ENSEMBL))
+granie_grn$peak.ID <- as.vector(unlist(granie_grn$peak.ID))
+granie_grn <- granie_grn[!duplicated(granie_grn),]
+nr_links_per_gene[['GRaNIE (GRN)']] <- table(granie_grn$gene.ENSEMBL)
+method_list[['GRaNIE (GRN)']] <- rep('GRaNIE (GRN)', length(table(granie_grn$gene.ENSEMBL)))
+dim(granie_grn)
+# SCENIC+
+scenicplus <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_final_autoreg/grnboost/region_to_gene_in_eGRN.tsv')
+#scenicplus <- scenicplus[which(scenicplus$rho > 0),]
+nr_links_per_gene[['SCENIC+']] <- table(scenicplus$target)
+method_list[['SCENIC+']] <- rep('SCENIC+', length(table(scenicplus$target)))
+dim(scenicplus)
+```
+
+```{r}
+df <- cbind(as.numeric(unlist(nr_links_per_gene)), unlist(method_list))
+colnames(df) <- c('x', 'grp')
+df <- as.data.frame(df)
+df[,1] <- as.numeric(df[,1])
+
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'orange', "#4DAF4A", "orange", "#984EA3")
+names(myColors) <- c('SCENIC+', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE', 'CellOracle (GRN)', 'GRaNIE (GRN)', 'FigR (GRN)')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Number_of_links_per_method_all_V2.pdf')
+ggplot(df,aes(x = reorder(grp, -x, FUN = median), y = x, fill=reorder(grp, -x, FUN = median))) + geom_boxplot() + theme_bw() + xlab("Model") + ylab('Correlation') + theme(axis.text.x = element_text(angle = 45, hjust=1)) + colScale + ylim(c(0,100))
+dev.off()
+```
+
+```{r}
+data <- as.data.frame(lengths(method_list))
+colnames(data) <- 'value'
+data$Method <- rownames(data)
+library(RColorBrewer)
+library(ggplot2)
+myColors <- c(brewer.pal(4,"Set1"), 'orange', "#4DAF4A", "orange", "#984EA3")
+names(myColors) <- c('SCENIC+', 'SCENIC+_Importance', 'CellOracle', 'FigR', 'GRaNIE', 'CellOracle (GRN)', 'GRaNIE (GRN)', 'FigR (GRN)')
+colScale <- scale_fill_manual(name = "grp",values = myColors, guide='none') 
+data$value <- as.numeric(data$value)
+pdf('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/methods_benchmark/plots/Number_of_genes_with_links.pdf')
+ggplot(data, aes(fill=Method, y=value, x=reorder(Method, -value))) + 
+    geom_bar(position="stack", stat="identity") + theme_bw() + theme(text = element_text(size = 20)) + ylab('Number of genes with links') + theme(axis.text.x = element_text(angle = 90)) + stat_summary(fun.y = sum, aes(label = ..y.., group = Method), geom = "text", vjust = -.2)+ colScale
+dev.off()
+```
