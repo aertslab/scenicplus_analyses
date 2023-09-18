@@ -1,0 +1,327 @@
+---
+title: "FigR on Encode cell lines"
+output: html_document
+---
+
+
+# Load data
+
+RNA: 
+* scRNA-seq matrix can be provided as a sparseMatrix of the log-normalized gene expression levels for the same cells (e.g. processed using Seurat)
+```{r}
+load("data/rnaSeurat_filtered.RData")
+rnaMat <- rnaSeurat@assays$RNA
+rm(rnaSeurat)
+rnaMat[1:5,1:5]
+```
+
+ATAC: 
+* Requires fixed-width accessibility peak ranges (typically 300 bp or so)
+* Assay object is a sparseMatrix of Tn5-instertion counts per peak per cell
+
+
+```{r}
+load("data/cntMat_ATAC_filtered.RData")
+suppressPackageStartupMessages(library(SummarizedExperiment))
+colnames(countsATAC) <- gsub("___DPLC", "", colnames(countsATAC))
+ATAC.SE <- SummarizedExperiment(assays=SimpleList(counts=countsATAC), rowRanges=GRanges(rownames(countsATAC)))
+rm(countsATAC)
+save(ATAC.SE, file="data/ATAC.SE.RData")
+ATAC.SE
+```
+
+```{r}
+cisAssign <- read.table("data/cell_topic.txt")
+colnames(cisAssign) <- gsub("___DPLC", "", colnames(cisAssign))
+cisAssign <- t(cisAssign)
+dim(cisAssign)
+# 40 4000
+cisAssign[1:5,1:5]
+```
+
+```{r}
+all(rownames(cisAssign) == colnames(ATAC.SE))
+```
+
+```{r}
+rnaMat <- rnaMat[,colnames(ATAC.SE)]
+all(colnames(rnaMat) == colnames(ATAC.SE))
+```
+
+Cell data
+```{r}
+cellAnnot <- read.table("data/cell_data.txt")
+rownames(cellAnnot) <- gsub("___DPLC", "", rownames(cellAnnot))
+```
+
+Umap
+```{r}
+cellsUmap <- read.table("data/cell_umap.txt")
+rownames(cellsUmap) <- gsub("___DPLC", "", rownames(cellsUmap))
+
+# plot
+annoCols <- setNames(rainbow(length(unique(cellAnnot$Line_type))),unique(cellAnnot$Line_type))
+cellsData <- cbind(cellsUmap, cellAnnot=cellAnnot[rownames(cellsUmap),'Line_type']) 
+
+# Plot
+library(dplyr)
+library(ggplot2)
+cellsData %>% as.data.frame() %>% ggplot(aes(UMAP_1, UMAP_2, color=cellAnnot)) + 
+  geom_point(size=0.5) + scale_color_manual(values=annoCols)+
+  theme_classic() + guides(colour = guide_legend(override.aes = list(size=2)))
+
+```
+
+
+# FigR tutorial 2: Multiome / Share-seq with cistopic object
+
+```{r}
+library(dplyr)
+library(FNN)
+library(chromVAR)
+library(doParallel)
+library(BuenColors)
+suppressPackageStartupMessages(library(FigR))
+
+suppressPackageStartupMessages(library(BSgenome.Hsapiens.UCSC.hg38))
+```
+
+
+### DORC calling
+
+#### Peak-gene association testing
+
+> Next, we take a default (**10 kb**) window around each gene’s TSS, and compute the **Spearman correlation** across all cells between their peak accessibility counts (mean-centered) and the normalized RNA expression. For each peak-gene pair correlation, we use (default n=100) **background** peaks matched for GC content and accessibility to correlate to the same gene, so that we can test for significance (**permutation p-value**).
+
+```{r}
+date()
+```
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+# Takes a few hours... (recommended to run as script)
+cisCor <- runGenePeakcorr(ATAC.se = ATAC.SE,
+                          RNAmat = rnaMat,
+                          genome = "hg38", # Also supports mm10 and hg38
+                          nCores = 5, 
+                          p.cut=NULL)
+save(cisCor, file="int2/1_cisCor.RData")
+date()
+```
+#### Determine DORCs
+
+> Filter correlations based on the background p-value, and summarize the genes that have a relatively high number of significant peak-gene associations (i.e. Domains of regulatory chromatin or ‘DORCs’)
+
+```{r}
+# Filter peak-gene correlations by p-value                    
+cisCor.filt <- cisCor %>% filter(pvalZ <= 0.05)
+
+# Determine DORC genes
+dorcGenes <- cisCor.filt %>% dorcJPlot(cutoff=7, # Default
+                                           returnGeneList = TRUE)
+length(dorcGenes)
+```
+
+Full ranked table of genes and number of significantly associated peaks:
+
+```{r}
+# unfiltered
+numDorcs <- cisCor.filt %>% group_by(Gene) %>% tally() %>% arrange(desc(n))
+write.table(numDorcs, file="int2/2_numDorcs.txt", row.names=F, quote=F)
+numDorcs
+```
+
+```{r}
+selTFs = c("MITF", "SOX10", "HNF4A", 'FOXA1', 'GATA1', 'GATA2', 'TAL1', 'EBF1',
+                                'CEBP1', 'ZEB1', 'MEIS1', 'MEIS1', 'PAX5', 'SOX9', 'ONECUT1', 'ONECUT2',
+                                'TEAD1','TEAD2','TEAD3','TEAD4','WT1')
+numDorcs %>% filter(Gene %in% selTFs)
+```
+
+
+### Calculate DORCs accessibility & RNA (smoothed)
+
+> DORC accessibility scores,: sum up the chromatin accessibility peak counts for peaks associated with a given gene.
+
+```{r}
+# Get DORC scores
+dorcMat <- getDORCScores(ATAC.SE, dorcTab=cisCor.filt, geneList=dorcGenes, nCores=10)
+```
+Smooth using KNN (For example using cistopic)
+```{r}
+# Derive cell kNN using cisTopic
+set.seed(123)
+cellkNN <- get.knn(cisAssign, k=30)$nn.index
+rownames(cellkNN) <- rownames(cisAssign)
+dim(cellkNN)
+```
+
+ATAC: 
+```{r}
+# Smooth DORC scores (using cell KNNs)
+dorcMat.smooth <- smoothScoresNN(NNmat=cellkNN, mat=dorcMat, nCores=10)
+```
+
+RNA :  # Here uses KNN again... maybe should use clusters instead?
+```{r}
+RNAmat.smooth <- smoothScoresNN(NNmat=cellkNN, mat=rnaMat, nCores=10)
+```
+
+#### Visualizing DORCs
+
+
+```{r}
+library(patchwork)
+# Visualize on pre-computed UMAP
+umap.d <- cellsUmap[colnames(dorcMat.smooth),]
+```
+
+```{r}
+## Save for later...
+# save(dorcMat.smooth, file="int2/dorcMat.smooth.RData")
+# save(RNAmat.smooth, file="int2/RNAmat.smooth.RData")
+# save(umap.d, file="int2/cellsUmap.RData")
+```
+
+```{r}
+## Reload if needed
+# load("int2/dorcMat.smooth.RData")
+# load("int2/RNAmat.smooth.RData")
+# load("int2/cellsUmap.RData")
+```
+
+```{r}
+
+tf <- 'HNF4A'
+dorcg <- plotMarker2D(umap.d, dorcMat.smooth, markers = c(tf), maxCutoff = "q0.99", colorPalette = "brewer_heat") + 
+            ggtitle(paste(tf, "DORC"))
+rnag <- plotMarker2D(umap.d, RNAmat.smooth, markers = c(tf), maxCutoff = "q0.99", colorPalette = "brewer_purple") + 
+            ggtitle(paste(tf, "RNA"))
+
+dorcg + rnag
+```
+
+## TF-gene associations
+
+Determine TFs that are putative regulators (acivators or repressors) of DORCs. 
+> By specifying a built-in reference motif database (see Methods of associated manuscript), and providing smoothed DORC accessibility and RNA count matrices as input, we determine which DORCs are enriched for different TF binding motifs, in addition to testing their correlations to TF RNA expression. 
+
+> This returns a table of regulations cores between each DORC gene and a TF in the reference database, which we can filter on and visualize
+
+```{r}
+date()
+```
+
+
+```{r}
+# Run FigR
+fig.d <- runFigRGRN(ATAC.se=ATAC.SE,
+                      rnaMat=RNAmat.smooth, # Smoothed RNA matrix using paired cell kNNs
+                      dorcMat=dorcMat.smooth,
+                    dorcTab=cisCor.filt, # Filtered peak-gene associations
+                    dorcGenes=dorcGenes,
+                    genome="hg38",
+                    nCores=1)
+save(fig.d, file="int2/2_GRN_fig.d.RData")
+date()
+```
+     
+## Visualizing FigR results
+
+```{r}
+# Reload
+load("int2/2_GRN_fig.d.RData")
+
+selTFs = c("MITF", "SOX10", "HNF4A", 'FOXA1', 'GATA1', 'GATA2', 'TAL1', 'EBF1',
+                                'CEBP1', 'ZEB1', 'MEIS1', 'MEIS1', 'PAX5', 'SOX9', 'ONECUT1', 'ONECUT2',
+                                'TEAD1','TEAD2','TEAD3','TEAD4','WT1')
+```
+
+
+#### Global regulation profile
+
+Plot **all TF-DORC associations** (all tested TFs by all tested DORCs) as a scatter plot, where each point is a TF-DORC pair. 
+The x-axis provides the significance of the **correlation of each TF’s expression to the DORC accessibility** (Z-test relative to background), and the y-axis shows the relative **enrichment of the TF’s motif** among the DORC-associated peaks. 
+Points are colored by their determined FigR regulation score. Putative activating associations are highlighted in red, while repressive associations are in blue.
+
+```{r}
+figR.d %>% 
+  ggplot(aes(Corr.log10P, Enrichment.log10P, color=Score)) + ggrastr::geom_point_rast(size=0.01,shape=16) + theme_classic() + 
+  scale_color_gradientn(colours = jdb_palette("solar_extra"), limits=c(-3,3), oob = scales::squish,breaks=scales::breaks_pretty(n=3))
+```
+
+#### Ranking TF drivers
+
+We can rank TFs by the overall (mean) regulation score across all DORCs. 
+This helps give a snapshot of the major activators and repressors across all cells in the data given the DORCs.
+
+```{r}
+# Top and bottom TFs
+rankDrivers(figR.d, rankBy="meanScore", interactive=FALSE)
+```
+
+Specific TFs: 
+```{r}
+rankDrivers(figR.d, rankBy="meanScore", interactive=FALSE, myLabels=selTFs)
+```
+
+
+We can also rank by the total number of targets per TF, passing a specified score filter
+
+```{r}
+rankDrivers(figR.d, score.cut=2, rankBy="nTargets", interactive=TRUE)
+```
+
+
+#### Regulators of a given gene (DORC)
+
+We can also subset the plot above by restricting it to specific TFs. 
+Only points (TFs) passing the user-defined threshold are labeled as putative drivers of the queried DORC.
+
+```{r}
+plotDrivers(figR.d, score.cut=2, marker="Lef1")
+```
+
+#### Heatmap view
+
+For the heatmap plot, we take any TF-DORC association that meets the score cut-off, and plot the union of all **TFs** (columns) x **DORCs** (rows), colored by their associated FigR regulation score
+
+```{r}
+library(ComplexHeatmap)
+plotfigRHeatmap(figR.d=figR.d,
+                score.cut=2,
+                column_names_gp=gpar(fontsize=6), # from ComplexHeatmap
+                show_row_dend=FALSE # from ComplexHeatmap
+                )
+```
+
+Specific DORCs or TFs:
+
+```{r}
+library(ComplexHeatmap)
+plotfigRHeatmap(figR.d=figR.d,
+                score.cut=1,
+                TFs=selTFs,
+                column_names_gp=gpar(fontsize=6), # from ComplexHeatmap
+                show_row_dend=FALSE # from ComplexHeatmap
+                )
+```
+
+#### Network view
+
+Similarly, we can render the significant associations as a graph network, where each node is a TF/DORC and each edge is an association passing a user-specified threshold
+
+```{r}
+library(networkD3)
+plotfigRNetwork(figR.d,
+                score.cut=2,
+                TFs=selTFs,
+                weight.edges=TRUE)
+```
+
+
+
+    
+
+
+
+

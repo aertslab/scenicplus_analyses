@@ -1,0 +1,117 @@
+---
+title: "FigR on Encode cell lines"
+output: html_document
+---
+
+# Import data
+
+## RNA (simulated cells)
+```{r}
+countsRNA <- read.csv('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/scRNA_count_matrix.tsv', header = TRUE, sep = "") 
+countsRNA[1:5,1:5]
+```
+
+```{r}
+dim(countsRNA)
+```
+
+Number of cells/line:
+```{r}
+table(do.call(rbind, strsplit(colnames(countsRNA), '_'))[,1])
+```
+
+Filter genes
+
+```{r}
+genesKept <- read.table("/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/scplus_genes.txt")[,1]
+length(genesKept)
+```
+
+```{r}
+countsRNA <- countsRNA[rownames(countsRNA) %in% genesKept,]
+dim(countsRNA)
+```
+
+```{r}
+library(Seurat) # No further filtered, just normalization
+rnaSeurat <- CreateSeuratObject(counts = countsRNA)
+rnaSeurat <- NormalizeData(rnaSeurat)
+save(rnaSeurat, file="rnaSeurat_filtered.RData")
+rnaSeurat
+```
+```{r}
+rnaSeurat@assays$RNA[1:5,1:5]
+```
+
+Save as sparse - Not needed
+
+```{r}
+library(Matrix)
+cellNames <- colnames(countsRNA)
+tmp <- lapply(countsRNA, Matrix, sparse = TRUE)
+cntMat_RNA <- Reduce(cbind2, tmp)
+rownames(cntMat_RNA) <- rownames(countsRNA)
+save(cntMat_RNA, file="cntMat_RNA_filtered.RData")
+rm(countsRNA)
+```
+
+
+
+## ATAC (simulated cells)
+
+```{r}
+library(arrow)
+# countsATAC <- arrow::read_feather('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/sc_fragment_matrix.feather', mmap = TRUE)
+
+
+# Reading in two parts (only in one it crashes, dont know why...)
+countsATAC <- arrow::read_feather('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/sc_fragment_matrix.feather', mmap = TRUE, col_select = 1:2000)
+# dim(countsATAC)
+# countsATAC[1:10,1:10]
+# class(countsATAC)
+library(Matrix)
+countsATAC_sparse <- Reduce(cbind2, lapply(countsATAC[,-1], Matrix, sparse = TRUE))
+rownames(countsATAC_sparse) <- countsATAC$index
+colnames(countsATAC_sparse) <- colnames(countsATAC)[-1]
+rm(countsATAC)
+
+countsATAC_pt2 <- arrow::read_feather('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/count_matrices/sc_fragment_matrix.feather', mmap = TRUE, col_select = c(1, 4001))
+# dim(countsATAC_pt2)
+# countsATAC_pt2[1:10,1:10]
+countsATAC_pt2_sparse <- Reduce(cbind2, lapply(countsATAC_pt2[,-1], Matrix, sparse = TRUE))
+rownames(countsATAC_pt2_sparse) <- countsATAC_pt2$index
+colnames(countsATAC_pt2_sparse) <- colnames(countsATAC_pt2)[-1]
+rm(countsATAC_pt2)
+
+countsATAC <- cbind(countsATAC_sparse, countsATAC_pt2_sparse)
+rownames(countsATAC) <- rownames(countsATAC_pt2_sparse)
+rm(countsATAC_sparse)
+rm(countsATAC_pt2_sparse)
+
+save(countsATAC, file="cntMat_ATAC.RData")
+dim(countsATAC)
+```
+
+```{r}
+countsATAC[1:5,1:5]
+```
+
+
+Number of cells/line:
+```{r}
+cbind(table(do.call(rbind, strsplit(colnames(countsATAC), '_'))[,1]))
+```
+
+
+Filter  regions
+
+```{r}
+regionsKept <- read.table("/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/scplus_regions.txt")[,1]
+length(regionsKept)
+```
+```{r}
+countsATAC <- countsATAC[rownames(countsATAC) %in% regionsKept,]
+dim(countsATAC)
+save(countsATAC, file="cntMat_ATAC_filtered.RData")
+```
+
