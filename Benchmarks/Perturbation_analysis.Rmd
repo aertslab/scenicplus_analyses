@@ -1,0 +1,845 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Select data
+
+```{r}
+metadata <- read.delim('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/metadata.tsv', sep='\t')
+metadata <- metadata[which(metadata[,'Output.type'] == 'gene quantifications'),]
+metadata <- metadata[which(metadata[,'File.assembly'] == 'GRCh38'),]
+metadata <- metadata[which(metadata[,'Genome.annotation'] == 'V29'),]
+metadata <- metadata[-which(metadata[,'File.accession'] %in% c('ENCFF223RNN', 'ENCFF443FXF')),]
+metadata <- metadata[,c('File.accession', 'Assay', 'Biosample.term.name', 'Experiment.target', 'Biosample.genetic.modifications.categories', 'Technical.replicate.s.')]
+metadata$Technical.replicate.s. <-sapply(strsplit(unlist(metadata$Technical.replicate.s.), split = "_"), "[", 1)
+metadata$Experiment.target <-sapply(strsplit(unlist(metadata$Experiment.target), split = "-"), "[", 1)
+```
+
+```{r}
+t(table(metadata$Assay, metadata$Biosample.term.name))
+```
+
+```{r}
+table(metadata$Assay)
+table(metadata$Biosample.genetic.modifications.categories)
+table(metadata$Biosample.term.name)
+table(metadata$Experiment.target)
+table(metadata$Technical.replicate.s.)
+```
+
+```{r}
+metadata$sample_name <- gsub(' ', '-', paste0(metadata$Biosample.term.name, '_', metadata$Experiment.target, '_', metadata$Assay, '_', metadata$Technical.replicate.s.))
+length(metadata$sample_name)
+length(unique(metadata$sample_name))
+```
+
+```{r}
+dt_list <- list()
+for (row in 1:nrow(metadata)){
+  file_name <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/', metadata[row, 'File.accession'], '.tsv')
+  name <- metadata[row, 'sample_name']
+  dt <- read.delim(file_name, sep='\t')
+  dt <- dt[,c('gene_id', 'expected_count')]
+  dt <- dt[grep('ENS', dt[,1]),]
+  rownames(dt) <- dt[,1]
+  dt <- dt[,-1, drop=FALSE]
+  colnames(dt) <- name
+  dt[,1] <- as.integer(dt[,1])
+  dt_list[[name]] <- dt
+}
+
+file_name <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/HepG2_control.tsv')
+name <- 'HepG2_control'
+dt <- read.delim(file_name, sep='\t')
+dt <- dt[,c('gene_id', 'expected_count')]
+dt <- dt[grep('ENS', dt[,1]),]
+rownames(dt) <- dt[,1]
+dt <- dt[,-1, drop=FALSE]
+colnames(dt) <- name
+dt[,1] <- as.integer(dt[,1])
+dt_list[[name]] <- dt
+
+file_name <- paste0('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/K562_control.tsv')
+name <- 'K562_control'
+dt <- read.delim(file_name, sep='\t')
+dt <- dt[,c('gene_id', 'expected_count')]
+dt <- dt[grep('ENS', dt[,1]),]
+rownames(dt) <- dt[,1]
+dt <- dt[,-1, drop=FALSE]
+colnames(dt) <- name
+dt[,1] <- as.integer(dt[,1])
+dt_list[[name]] <- dt
+
+count_matrix <- do.call(cbind, dt_list)
+```
+
+```{r}
+library('biomaRt')
+mart <- useEnsembl(biomart = 'genes', 
+                       dataset = 'hsapiens_gene_ensembl',
+                       version = 86)
+all <- getBM(attributes= c('version',"ensembl_gene_id","external_gene_name"),mart= mart)
+all$ensembl_gene_id_version <- paste0(all$ensembl_gene_id, '.', all$version)
+all <- all[complete.cases(all),]
+count_matrix <- count_matrix[which(rownames(count_matrix) %in% all[,'ensembl_gene_id_version']),]
+all <- all[which(all$ensembl_gene_id_version %in% rownames(count_matrix)),]
+count_matrix <- count_matrix[as.vector(unlist(all$ensembl_gene_id_version)), ]
+count_matrix$ensembl_gene_id_version <- rownames(count_matrix)
+df <- data.table(merge(count_matrix,all,by="ensembl_gene_id_version"))
+library("plyr")
+df <- as.data.frame(df)
+df <- df[-which(colnames(df) %in% c('sums', 'version', 'ensembl_gene_id', "ensembl_gene_id_version"))]
+count_matrix <- aggregate(. ~ external_gene_name, df, sum)
+rownames(count_matrix) <- count_matrix[,1]
+count_matrix <- count_matrix[,-1, drop=FALSE]
+count_matrix <- count_matrix[-1,, drop=FALSE]
+keep <- rowSums(count_matrix) >= 10
+count_matrix <- count_matrix[keep,]
+```
+
+```{r}
+saveRDS(count_matrix, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/count_matrix.RDS')
+```
+
+
+```{r}
+count_matrix <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/count_matrix.RDS')
+library(stringr)
+sample_names <- unique(str_sub(colnames(count_matrix), end=-3))
+sample_names <- sample_names[1:(length(sample_names)-2)]
+
+
+library(DESeq2)
+res_list_full <- list()
+res_list <- list()
+res_list_filt <- list()
+for (sample in sample_names){
+      sub_counts <- count_matrix[,grep(sample, colnames(count_matrix), fixed=TRUE)]
+      control <- strsplit(sample, '_')[[1]][1]
+      sub_control <- count_matrix[,grep(paste0(control, '_control'), colnames(count_matrix)), drop=FALSE]
+      sub_counts <- cbind(sub_counts, sub_control)
+      
+      samples <- colnames(sub_counts)
+      coldata <- c(rep('Perturbation', length(samples)-1), 'Control')
+      names(coldata) <- samples
+      coldata <- as.data.frame(coldata)
+      colnames(coldata) <- 'condition'
+      print(coldata)
+      if (length(samples) == 2){
+        dds <- DESeqDataSetFromMatrix(countData = sub_counts,
+                                    colData = coldata[colnames(sub_counts),,drop=FALSE],
+                                    design = ~ 1)
+      } else{
+          dds <- DESeqDataSetFromMatrix(countData = sub_counts,
+                                    colData = coldata[colnames(sub_counts),,drop=FALSE],
+                                    design = ~ condition)
+          dds$condition <- relevel(dds$condition, ref = "Control")
+        }
+
+      dds <- DESeq(dds)
+      res <- results(dds)
+      res_list_full[[sample]] <- res
+      cc_res <- res[complete.cases(res),]
+      res_list[[sample]] <- cc_res
+      print(dim(cc_res))
+      res_list_filt[[sample]] <- cc_res[which(cc_res$padj < 0.1),]
+      print(dim(cc_res[which(cc_res$padj < 0.1),]))
+}
+
+saveRDS(res_list_full, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/Full_DESEQ_results.RDS')
+saveRDS(res_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+saveRDS(res_list_filt, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/pAdj01_DESEQ_results.RDS')
+```
+
+# SCENIC+
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_V2_grnboost/SCENIC+_gene_based.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_SCENIC+.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_SCENIC+.tsv')
+```
+
+```{r, fig.height=8, fig.width=14}
+plotEnrichmentCustom <- function(pathway, stats, gseaParam = 1, v=120){
+  rnk <- rank(-stats)
+  ord <- order(rnk)
+  statsAdj <- stats[ord]
+  statsAdj <- sign(statsAdj) * (abs(statsAdj)^gseaParam)
+  statsAdj <- statsAdj/max(abs(statsAdj))
+  pathway <- unname(as.vector(na.omit(match(pathway, names(statsAdj)))))
+  pathway <- sort(pathway)
+  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway, 
+                          returnAllExtremes = TRUE)
+  bottoms <- gseaRes$bottoms
+  tops <- gseaRes$tops
+  n <- length(statsAdj)
+  xs <- as.vector(rbind(pathway - 1, pathway))
+  ys <- as.vector(rbind(bottoms, tops))
+  toPlot <- data.frame(x = c(0, xs, n + 1), y = c(0, ys, 0))
+  diff <- (max(tops) - min(bottoms))/8
+  x = y = NULL
+  g <- ggplot(toPlot, aes(x = x, y = y)) + geom_point(color = "dodgerblue", 
+                                                      size = 0.1) + geom_hline(yintercept = max(tops), colour = "red", 
+                                                                               linetype = "dashed") +  geom_vline(xintercept = v, colour = "grey", 
+                                                                                                                  linetype = "dashed") + geom_hline(yintercept = min(bottoms), 
+                                                                                                                                                    colour = "red", linetype = "dashed") + geom_hline(yintercept = 0, 
+                                                                                                                                                                                                      colour = "black") + geom_line(color = "dodgerblue") + theme_bw() + 
+    geom_segment(data = data.frame(x = pathway), mapping = aes(x = x, 
+                                                               y = -diff/2, xend = x, yend = diff/2), size = 0.2) + 
+    theme(panel.border = element_blank(), panel.grid.minor = element_blank()) + 
+    labs(x = "Rank", y = "Enrichment Score")
+  g
+}
+
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_+')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+  r_name <- paste0(tf, '_-')
+  pos <- which(fgseaRes$pathway == r_name)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+
+figure <- ggarrange(plotlist=plot_list, ncol = 8, nrow = 4)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
+# SCENIC+ - GENIE3
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/scenicplus_genie3_v2/SCENIC+_gene_based.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+l <- names(regulon_list)
+names(regulon_list) <- substr(l,1,nchar(l)-2)
+regulon_list <- tapply(unlist(regulon_list , use.names = FALSE), rep(names(regulon_list), lengths(regulon_list)), FUN = c)
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_SCENIC+_genie3.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_SCENIC+_genie3.tsv')
+```
+
+```{r, fig.height=8, fig.width=14}
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_+')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+  r_name <- paste0(tf, '_-')
+  pos <- which(fgseaRes$pathway == r_name)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+
+figure <- ggarrange(plotlist=plot_list, ncol = 8, nrow = 5)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
+
+```{r}
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_+')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+  r_name <- paste0(tf, '_-')
+  pos <- which(fgseaRes$pathway == r_name)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+}
+```
+
+# SCENIC - GRNBoost
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost/out/data/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_scenic_grnboost.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_grnboost.tsv')
+
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+```
+
+```{r}
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+}
+```
+
+```{r, fig.height=8, fig.width=14}
+figure <- ggarrange(plotlist=plot_list, ncol = 8, nrow = 4)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
+# SCENIC - GENIE3
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+loom.file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/genie3/out/data/scRNA_count_matrix.SINGLE_SAMPLE_SCENIC.loom'
+loom <- open_loom(loom.file)
+regulons <- get_regulons(loom, column.attr.name='Regulons')
+regulon_list <- list()
+for (row in rownames(regulons)){
+  regulon_list[[row]] <- colnames(regulons)[which(regulons[row,] == 1)]
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_scenic_genie.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_genie3.tsv')
+
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+```
+
+```{r}
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+}
+```
+
+```{r, fig.height=8, fig.width=14}
+figure <- ggarrange(plotlist=plot_list, ncol = 8, nrow = 4)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
+# SCENIC - Only GRNBoost
+
+```{r}
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+```
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/grnboost/out/scenic_grnboost/scRNA_count_matrix/arboreto_with_multiprocessing/scRNA_count_matrix__adj.tsv'
+table <- read.table(file, header=T)
+table <- table[which(table[,1] %in% deseq_tfs),]
+table <- table[which(table$rho > 0),]
+table <- split(table , f = table$TF)
+regulon_list <- list()
+for (TF in names(table)){
+  regulon_list[[paste0(TF, '_(+)')]] <- table[[TF]]$target[which(table[[TF]]$importance > 0.5)]
+  
+}
+```
+
+```{r}
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_scenic_grnboost_alone.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_grnboost_alone.tsv')
+
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+```
+
+```{r, fig.height=20, fig.width=20}
+figure <- ggarrange(plotlist=plot_list, ncol = 10, nrow = 10)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
+```{r}
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+}
+```
+
+
+# SCENIC - Only GENIE3
+
+```{r}
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+```
+
+```{r}
+# Get eRegulons
+library(SCopeLoomR)
+file <- '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/vsn/genie3/out/scenic_genie3/scRNA_count_matrix/arboreto_with_multiprocessing/scRNA_count_matrix__adj.tsv'
+table <- read.table(file, header=T)
+table <- table[which(table[,1] %in% deseq_tfs),]
+table <- table[which(table$rho > 0),]
+table <- split(table , f = table$TF)
+regulon_list <- list()
+for (TF in names(table)){
+  regulon_list[[paste0(TF, '_(+)')]] <- table[[TF]]$target[which(table[[TF]]$importance > 0.005)]
+  
+}
+```
+
+```{r}
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_scenic_genie3_alone.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_genie3_alone.tsv')
+
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+```
+
+```{r}
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_(+)')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+}
+```
+
+```{r, fig.height=20, fig.width=20}
+figure <- ggarrange(plotlist=plot_list, ncol = 10, nrow = 10)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
+# CellOracle
+
+```{r}
+cell_oracle <- read.delim('/staging/leuven/stg_00002/lcb/sdewin/PhD/Multiomics_pipeline/analysis/encode_validation/CellOracle/celloracle/outs/target_genes_unfiltered.tsv')
+
+regulon_list <- list()
+for (TF in unique(cell_oracle$source)){
+  dt <- cell_oracle
+  regulon_list[[paste0(TF, '_+')]] <- unique(dt[which(dt$source == TF), 'target'])
+}
+
+deseq <- readRDS('/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/CC_DESEQ_results.RDS')
+regulon_tfs <- sapply(strsplit(names(regulon_list), split = "_"), "[", 1)
+deseq_tfs <- sapply(strsplit(names(deseq), split = "_"), "[", 2)
+length(unique(regulon_tfs)) #349
+length(unique(deseq_tfs)) #109
+length(which(unique(deseq_tfs) %in% unique(regulon_tfs))) #19
+common_tfs <- unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))]
+
+deseq_sub <- deseq[which(deseq_tfs %in% unique(deseq_tfs)[which(unique(deseq_tfs) %in% unique(regulon_tfs))])]
+regulon_list <- regulon_list [which(regulon_tfs %in% unique(regulon_tfs)[which(unique(regulon_tfs) %in% unique(deseq_tfs))])]
+
+library(fgsea)
+fgseaRes_list <- list()
+for (name in names(deseq_sub)){
+  print(name)
+  rank <- deseq_sub[[name]]$stat
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  fgseaRes_list[[name]] <- fgsea(pathways = regulon_list,
+                    stats    = rank,
+                    minSize  = 0,
+                    maxSize  = 30000)
+}
+
+
+saveRDS(fgseaRes_list, file='/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/fgseaRes_list_celloracle.RDS')
+
+rowlist <- list()
+for (name in names(fgseaRes_list)){
+  data <- as.data.frame(fgseaRes_list[[name]])
+  rownames(data) <- data$pathway
+  data <- as.data.frame(data[names(regulon_list),c('pathway', 'NES', 'padj')])
+  data$set <- rep(name, nrow(data))
+  rowlist[[name]]  <- data
+}
+
+
+df <- rbindlist(rowlist, fill=TRUE)
+write.table(df, '/staging/leuven/stg_00002/lcb/cbravo/Multiomics_pipeline/analysis/DPCL/data/Perturbation/GSEA_celloracle.tsv')
+
+plot_list <- list()
+par(mfrow=c(3,2))
+for (name in names(deseq_sub)){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- tf
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    plot_list[[paste0(r_name, '_', name)]] <- plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=1) + theme(plot.title = element_text(size = 6)) + rremove("ylab") + rremove("xlab")
+  }
+}
+```
+
+```{r}
+for (name in c('K562_GATA1_CRISPRi-RNA-seq', 'K562_STAT5A_CRISPRi-RNA-seq')){
+  tf <- strsplit(name, split = "_")[[1]][2]
+  r_name <- paste0(tf, '_+')
+  rank <- deseq_sub[[name]]$stat
+  fgseaRes <- fgseaRes_list[[name]]
+  pos <- which(fgseaRes$pathway == r_name)
+  names(rank) <- rownames(deseq_sub[[name]])
+  rank <- sort(rank)
+  if (r_name %in% names(regulon_list)){
+    print(plotEnrichmentCustom(regulon_list[[r_name]], rank, gseaParam = 1) + labs(title=paste(r_name, '/', name, '\nSize:', fgseaRes[[pos,'size']], 'LE:', length(fgseaRes[[pos,'leadingEdge']]),'NES:',  round(fgseaRes[[pos,'NES']],2)), size=6) + theme(plot.title = element_text(size = 12)))
+  }
+}
+```
+
+```{r, fig.height=8, fig.width=14}
+figure <- ggarrange(plotlist=plot_list, ncol = 8, nrow = 4)
+annotate_figure(figure, left = textGrob("ES", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                    bottom = textGrob("Rank", gp = gpar(cex = 1.3)))
+
+```
+
